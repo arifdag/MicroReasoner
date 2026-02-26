@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MicroReasoner Run Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "git_commit",
+    "seed",
+    "started_at",
+    "finished_at",
+    "model",
+    "data",
+    "artifacts",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{7,40}$"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base",
+        "adapter"
+      ],
+      "properties": {
+        "base": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adapter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sft",
+        "rl",
+        "eval"
+      ],
+      "properties": {
+        "sft": {
+          "$ref": "#/$defs/datasetRef"
+        },
+        "rl": {
+          "$ref": "#/$defs/datasetRef"
+        },
+        "eval": {
+          "$ref": "#/$defs/datasetRef"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "config_path",
+        "dataset_manifest_path",
+        "metrics_path",
+        "checkpoints_path"
+      ],
+      "properties": {
+        "config_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataset_manifest_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metrics_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoints_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed",
+        "aborted"
+      ]
+    },
+    "failure_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "$defs": {
+    "datasetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "hash"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
+
