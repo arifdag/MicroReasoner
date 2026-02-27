@@ -39,6 +39,16 @@ from microreasoner.runtime.models import (
     TrainSFTCheckpointConfig,
     TrainSFTConfig,
     TrainSFTGateConfig,
+    TrainGRPOAlgoConfig,
+    TrainGRPOBackendConfig,
+    TrainGRPOBatchConfig,
+    TrainGRPOCheckpointConfig,
+    TrainGRPOConfig,
+    TrainGRPOCurriculumConfig,
+    TrainGRPOCurriculumStageConfig,
+    TrainGRPOGateConfig,
+    TrainGRPOOptimConfig,
+    TrainGRPORunConfig,
     TrainSFTLoRAConfig,
     TrainSFTOptimConfig,
     TrainSFTQuantizationConfig,
@@ -208,6 +218,7 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
     data_raw = _as_dict(raw, "data")
     data_pipeline_raw = _as_dict(raw, "data_pipeline")
     train_sft_raw = _as_dict(raw, "train_sft")
+    train_grpo_raw = _as_dict(raw, "train_grpo")
     reward_raw = _as_dict(raw, "reward")
     evaluation_raw = _as_dict(raw, "evaluation")
     gates_raw = _as_dict(raw, "gates")
@@ -243,6 +254,15 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
     train_sft_selection_raw = _as_dict(train_sft_raw, "selection")
     train_sft_gate_raw = _as_dict(train_sft_raw, "gates")
     train_sft_backend_raw = _as_dict(train_sft_raw, "backend")
+    train_grpo_algo_raw = _as_dict(train_grpo_raw, "algo")
+    train_grpo_optim_raw = _as_dict(train_grpo_raw, "optim")
+    train_grpo_batch_raw = _as_dict(train_grpo_raw, "batch")
+    train_grpo_run_raw = _as_dict(train_grpo_raw, "run")
+    train_grpo_checkpoint_raw = _as_dict(train_grpo_raw, "checkpoint")
+    train_grpo_backend_raw = _as_dict(train_grpo_raw, "backend")
+    train_grpo_gate_raw = _as_dict(train_grpo_raw, "gates")
+    train_grpo_curriculum_raw = _as_dict(train_grpo_raw, "curriculum")
+    train_grpo_stage_rows = _require_mapping_list(train_grpo_curriculum_raw, "stage_schedule")
 
     if len(pipeline_source_rows) == 0:
         raise RuntimeConfigError("data_pipeline.input_sources must include at least one source")
@@ -265,6 +285,61 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
                 benchmarks=_require_str_list(rule_row, "benchmarks"),
             )
         )
+
+    if len(train_grpo_stage_rows) == 0:
+        raise RuntimeConfigError("train_grpo.curriculum.stage_schedule must include at least one stage")
+
+    grpo_stages: list[TrainGRPOCurriculumStageConfig] = []
+    for stage_row in train_grpo_stage_rows:
+        step_start = _require_int(stage_row, "step_start")
+        step_end = _require_int(stage_row, "step_end")
+        if step_start < 0 or step_end < step_start:
+            raise RuntimeConfigError(
+                "train_grpo.curriculum.stage_schedule has invalid step range "
+                f"({step_start}, {step_end})"
+            )
+        grpo_stages.append(
+            TrainGRPOCurriculumStageConfig(
+                name=_require_str(stage_row, "name"),
+                step_start=step_start,
+                step_end=step_end,
+            )
+        )
+
+    group_size = _require_int(train_grpo_algo_raw, "group_size")
+    if group_size <= 0:
+        raise RuntimeConfigError("train_grpo.algo.group_size must be > 0")
+    scale_rewards = _require_str(train_grpo_algo_raw, "scale_rewards")
+    if scale_rewards not in {"none", "batch", "group"}:
+        raise RuntimeConfigError(
+            "train_grpo.algo.scale_rewards must be one of: none, batch, group"
+        )
+    loss_type = _require_str(train_grpo_algo_raw, "loss_type")
+    if loss_type not in {"grpo", "dr_grpo", "dapo"}:
+        raise RuntimeConfigError(
+            "train_grpo.algo.loss_type must be one of: grpo, dr_grpo, dapo"
+        )
+
+    grpo_max_steps = _require_int(train_grpo_run_raw, "max_steps")
+    grpo_eval_every_steps = _require_int(train_grpo_run_raw, "eval_every_steps")
+    if grpo_max_steps <= 0:
+        raise RuntimeConfigError("train_grpo.run.max_steps must be > 0")
+    if grpo_eval_every_steps <= 0:
+        raise RuntimeConfigError("train_grpo.run.eval_every_steps must be > 0")
+
+    reward_threshold_parser_failure = _require_float(reward_threshold_raw, "parser_failure_rate_max")
+    reward_threshold_schema_compliance = _require_float(
+        reward_threshold_raw, "schema_compliance_rate_min"
+    )
+    if not 0.0 <= reward_threshold_parser_failure <= 1.0:
+        raise RuntimeConfigError("reward.thresholds.parser_failure_rate_max must be in [0, 1]")
+    if not 0.0 <= reward_threshold_schema_compliance <= 1.0:
+        raise RuntimeConfigError("reward.thresholds.schema_compliance_rate_min must be in [0, 1]")
+
+    for key in ("correctness", "schema", "length"):
+        reward_weight = _require_float(reward_weights_raw, key)
+        if reward_weight < 0.0:
+            raise RuntimeConfigError(f"reward.weights.{key} must be >= 0")
 
     return ResolvedConfig(
         schema_version=_require_str(raw, "schema_version"),
@@ -367,6 +442,51 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
                 trainer=_require_str(train_sft_backend_raw, "trainer")
             ),
         ),
+        train_grpo=TrainGRPOConfig(
+            algo=TrainGRPOAlgoConfig(
+                loss_type=loss_type,
+                group_size=group_size,
+                scale_rewards=scale_rewards,
+                kl_beta=_require_float(train_grpo_algo_raw, "kl_beta"),
+            ),
+            optim=TrainGRPOOptimConfig(
+                lr=_require_float(train_grpo_optim_raw, "lr"),
+                weight_decay=_require_float(train_grpo_optim_raw, "weight_decay"),
+                warmup_ratio=_require_float(train_grpo_optim_raw, "warmup_ratio"),
+                scheduler=_require_str(train_grpo_optim_raw, "scheduler"),
+            ),
+            batch=TrainGRPOBatchConfig(
+                per_device=_require_int(train_grpo_batch_raw, "per_device"),
+                grad_accum=_require_int(train_grpo_batch_raw, "grad_accum"),
+                max_prompt_len=_require_int(train_grpo_batch_raw, "max_prompt_len"),
+                max_completion_len=_require_int(train_grpo_batch_raw, "max_completion_len"),
+            ),
+            run=TrainGRPORunConfig(
+                max_steps=_require_int(train_grpo_run_raw, "max_steps"),
+                eval_every_steps=_require_int(train_grpo_run_raw, "eval_every_steps"),
+                save_every_steps=_require_int(train_grpo_run_raw, "save_every_steps"),
+                save_every_minutes=_require_int(train_grpo_run_raw, "save_every_minutes"),
+                logging_steps=_require_int(train_grpo_run_raw, "logging_steps"),
+                max_eval_samples=_require_int(train_grpo_run_raw, "max_eval_samples"),
+            ),
+            checkpoint=TrainGRPOCheckpointConfig(
+                save_total_limit=_require_int(train_grpo_checkpoint_raw, "save_total_limit"),
+                resume_strict=_require_bool(train_grpo_checkpoint_raw, "resume_strict"),
+            ),
+            backend=TrainGRPOBackendConfig(
+                trainer=_require_str(train_grpo_backend_raw, "trainer")
+            ),
+            gates=TrainGRPOGateConfig(
+                min_reward_std=_require_float(train_grpo_gate_raw, "min_reward_std"),
+                max_parser_failure_rate=_require_float(
+                    train_grpo_gate_raw, "max_parser_failure_rate"
+                ),
+                min_schema_compliance_rate=_require_float(
+                    train_grpo_gate_raw, "min_schema_compliance_rate"
+                ),
+            ),
+            curriculum=TrainGRPOCurriculumConfig(stage_schedule=tuple(grpo_stages)),
+        ),
         reward=RewardConfig(
             format=RewardFormatConfig(
                 response_schema=_require_str(reward_format_raw, "response_schema")
@@ -377,12 +497,8 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
                 length=_require_float(reward_weights_raw, "length"),
             ),
             thresholds=RewardThresholdConfig(
-                parser_failure_rate_max=_require_float(
-                    reward_threshold_raw, "parser_failure_rate_max"
-                ),
-                schema_compliance_rate_min=_require_float(
-                    reward_threshold_raw, "schema_compliance_rate_min"
-                ),
+                parser_failure_rate_max=reward_threshold_parser_failure,
+                schema_compliance_rate_min=reward_threshold_schema_compliance,
             ),
         ),
         evaluation=EvaluationConfig(

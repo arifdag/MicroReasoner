@@ -238,6 +238,82 @@ class TrainSFTConfig:
 
 
 @dataclass(frozen=True)
+class TrainGRPOAlgoConfig:
+    loss_type: str
+    group_size: int
+    scale_rewards: str
+    kl_beta: float
+
+
+@dataclass(frozen=True)
+class TrainGRPOOptimConfig:
+    lr: float
+    weight_decay: float
+    warmup_ratio: float
+    scheduler: str
+
+
+@dataclass(frozen=True)
+class TrainGRPOBatchConfig:
+    per_device: int
+    grad_accum: int
+    max_prompt_len: int
+    max_completion_len: int
+
+
+@dataclass(frozen=True)
+class TrainGRPORunConfig:
+    max_steps: int
+    eval_every_steps: int
+    save_every_steps: int
+    save_every_minutes: int
+    logging_steps: int
+    max_eval_samples: int
+
+
+@dataclass(frozen=True)
+class TrainGRPOCheckpointConfig:
+    save_total_limit: int
+    resume_strict: bool
+
+
+@dataclass(frozen=True)
+class TrainGRPOBackendConfig:
+    trainer: str
+
+
+@dataclass(frozen=True)
+class TrainGRPOGateConfig:
+    min_reward_std: float
+    max_parser_failure_rate: float
+    min_schema_compliance_rate: float
+
+
+@dataclass(frozen=True)
+class TrainGRPOCurriculumStageConfig:
+    name: str
+    step_start: int
+    step_end: int
+
+
+@dataclass(frozen=True)
+class TrainGRPOCurriculumConfig:
+    stage_schedule: tuple[TrainGRPOCurriculumStageConfig, ...]
+
+
+@dataclass(frozen=True)
+class TrainGRPOConfig:
+    algo: TrainGRPOAlgoConfig
+    optim: TrainGRPOOptimConfig
+    batch: TrainGRPOBatchConfig
+    run: TrainGRPORunConfig
+    checkpoint: TrainGRPOCheckpointConfig
+    backend: TrainGRPOBackendConfig
+    gates: TrainGRPOGateConfig
+    curriculum: TrainGRPOCurriculumConfig
+
+
+@dataclass(frozen=True)
 class GateConfig:
     strict_qa: bool
     fail_on_missing_metrics: bool
@@ -254,6 +330,7 @@ class ResolvedConfig:
     data: DataConfig
     data_pipeline: DataPipelineConfig
     train_sft: TrainSFTConfig
+    train_grpo: TrainGRPOConfig
     reward: RewardConfig
     evaluation: EvaluationConfig
     gates: GateConfig

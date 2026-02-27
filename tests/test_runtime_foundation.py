@@ -56,11 +56,44 @@ def test_run_id_format() -> None:
     assert re.match(r"^train-sft-\d{8}T\d{6}Z-[0-9a-f]{8}$", run_id)
 
 
-def test_train_grpo_scaffold_creates_run_artifacts(tmp_path: Path) -> None:
+def test_train_grpo_missing_init_checkpoint_returns_failure(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     _write_text(config_path, "{}\n")
+    dataset_manifest = tmp_path / "dataset_manifest.json"
+    _write_text(
+        dataset_manifest,
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "dataset_type": "rl",
+                "dataset_id": "abc12345def67890",
+                "build_timestamp": "2026-02-27T00:00:00Z",
+                "seed": 42,
+                "inputs": [
+                    {
+                        "name": "source",
+                        "adapter": "canonical_jsonl",
+                        "path": "source.jsonl",
+                        "resolved_path": "source.jsonl",
+                        "hash": "a" * 64,
+                    }
+                ],
+                "filters": {
+                    "min_think_tokens": 1,
+                    "max_think_tokens": 1200,
+                    "require_single_boxed_answer": True,
+                    "drop_duplicates": True,
+                },
+                "split_counts": {"train": 1, "val": 1},
+                "reject_stats": {},
+                "artifact_paths": {"train": "train.jsonl", "val": "val.jsonl", "manifest": "manifest.json"},
+                "artifact_hashes": {"train": "b" * 64, "val": "c" * 64},
+            },
+        ),
+    )
     output_root = tmp_path / "runs"
     run_id = "unit-train-grpo"
+    missing_init = tmp_path / "missing-checkpoint"
 
     code = main(
         [
@@ -68,6 +101,10 @@ def test_train_grpo_scaffold_creates_run_artifacts(tmp_path: Path) -> None:
             "grpo",
             "--config",
             str(config_path),
+            "--dataset-manifest",
+            str(dataset_manifest),
+            "--init-checkpoint",
+            str(missing_init),
             "--run-id",
             run_id,
             "--output-dir",
@@ -76,20 +113,8 @@ def test_train_grpo_scaffold_creates_run_artifacts(tmp_path: Path) -> None:
             "evaluation.sampled.num_samples=16",
         ]
     )
-    assert code == 2
-
-    run_dir = output_root / run_id
-    assert (run_dir / "config.json").exists()
-    assert (run_dir / "command_meta.json").exists()
-    assert (run_dir / "summary.json").exists()
-    assert (run_dir / "errors.json").exists()
-    assert (run_dir / "logs" / "events.jsonl").exists()
-
-    config_json = _read_json(run_dir / "config.json")
-    assert config_json["evaluation"]["sampled"]["num_samples"] == 16
-
-    summary = _read_json(run_dir / "summary.json")
-    assert summary["status"] == "not_implemented"
+    assert code == 1
+    assert not (output_root / run_id).exists()
 
 
 def test_eval_scaffold_missing_checkpoint_is_structured_failure(tmp_path: Path) -> None:
@@ -132,6 +157,10 @@ def test_override_failure_does_not_create_run_dir(tmp_path: Path) -> None:
             "grpo",
             "--config",
             str(config_path),
+            "--dataset-manifest",
+            str(tmp_path / "manifest.json"),
+            "--init-checkpoint",
+            str(tmp_path / "checkpoint"),
             "--run-id",
             "bad-override",
             "--output-dir",
