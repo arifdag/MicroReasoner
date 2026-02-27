@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from microreasoner.contracts.validation import validate_run_dir
+from microreasoner.runtime.eval_command import execute_eval_command
 from microreasoner.runtime.scaffold import execute_scaffold_command
 
 
@@ -56,6 +57,23 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--checkpoint", required=True, help="Path to checkpoint")
     eval_parser.add_argument("--run-id", required=False, help="Optional explicit run id")
     eval_parser.add_argument(
+        "--dataset-dir",
+        required=False,
+        help="Optional directory overriding eval dataset paths by filename",
+    )
+    eval_parser.add_argument(
+        "--max-items",
+        required=False,
+        type=int,
+        help="Optional max number of examples after deterministic ordering",
+    )
+    eval_parser.add_argument(
+        "--seed",
+        required=False,
+        type=int,
+        help="Optional seed override for deterministic sampled generation",
+    )
+    eval_parser.add_argument(
         "--set",
         dest="set_overrides",
         action="append",
@@ -105,13 +123,15 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "eval":
-        return execute_scaffold_command(
-            command_name="eval",
+        return execute_eval_command(
             config_path=Path(args.config),
             checkpoint=Path(args.checkpoint),
             cli_overrides=args.set_overrides,
             run_id=args.run_id,
             output_dir=Path(args.output_dir) if args.output_dir else None,
+            dataset_dir=Path(args.dataset_dir) if args.dataset_dir else None,
+            max_items=args.max_items,
+            seed_override=args.seed,
         )
 
     parser.print_help()

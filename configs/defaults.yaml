@@ -34,6 +34,18 @@ evaluation:
   publish:
     - "greedy_pass@1"
     - "sampled_pass@1"
+  datasets:
+    gsm8k:
+      path: "artifacts/datasets/gsm8k_eval.jsonl"
+    math:
+      path: "artifacts/datasets/math_eval.jsonl"
+  parser:
+    strict_boxed_only: true
+  inference:
+    backend: "transformers"
+    max_new_tokens: 512
+    device: "auto"
+    dtype: "auto"
   greedy:
     temperature: 0.0
   sampled:
@@ -47,4 +59,3 @@ gates:
   fail_on_resume_test_failure: true
   fail_on_dataset_hash_mismatch: true
   fail_on_eval_config_drift: true
-

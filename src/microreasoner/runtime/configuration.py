@@ -9,9 +9,13 @@ import yaml
 
 from microreasoner.runtime.errors import RuntimeConfigError
 from microreasoner.runtime.models import (
+    BenchmarkDatasetConfig,
     DataConfig,
     EvaluationConfig,
+    EvaluationDatasetsConfig,
     EvaluationGreedyConfig,
+    EvaluationInferenceConfig,
+    EvaluationParserConfig,
     EvaluationSampledConfig,
     GateConfig,
     ModelConfig,
@@ -175,6 +179,11 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
 
     eval_greedy_raw = _as_dict(evaluation_raw, "greedy")
     eval_sampled_raw = _as_dict(evaluation_raw, "sampled")
+    eval_datasets_raw = _as_dict(evaluation_raw, "datasets")
+    eval_gsm8k_raw = _as_dict(eval_datasets_raw, "gsm8k")
+    eval_math_raw = _as_dict(eval_datasets_raw, "math")
+    eval_parser_raw = _as_dict(evaluation_raw, "parser")
+    eval_inference_raw = _as_dict(evaluation_raw, "inference")
 
     return ResolvedConfig(
         schema_version=_require_str(raw, "schema_version"),
@@ -214,6 +223,19 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
         ),
         evaluation=EvaluationConfig(
             publish=_require_str_list(evaluation_raw, "publish"),
+            datasets=EvaluationDatasetsConfig(
+                gsm8k=BenchmarkDatasetConfig(path=_require_str(eval_gsm8k_raw, "path")),
+                math=BenchmarkDatasetConfig(path=_require_str(eval_math_raw, "path")),
+            ),
+            parser=EvaluationParserConfig(
+                strict_boxed_only=_require_bool(eval_parser_raw, "strict_boxed_only")
+            ),
+            inference=EvaluationInferenceConfig(
+                backend=_require_str(eval_inference_raw, "backend"),
+                max_new_tokens=_require_int(eval_inference_raw, "max_new_tokens"),
+                device=_require_str(eval_inference_raw, "device"),
+                dtype=_require_str(eval_inference_raw, "dtype"),
+            ),
             greedy=EvaluationGreedyConfig(
                 temperature=_require_float(eval_greedy_raw, "temperature")
             ),
@@ -251,4 +273,3 @@ def resolve_config(
     if cli_overrides:
         merged = apply_overrides(merged, cli_overrides)
     return to_resolved_config(merged)
-

@@ -73,8 +73,35 @@ class EvaluationSampledConfig:
 
 
 @dataclass(frozen=True)
+class BenchmarkDatasetConfig:
+    path: str
+
+
+@dataclass(frozen=True)
+class EvaluationDatasetsConfig:
+    gsm8k: BenchmarkDatasetConfig
+    math: BenchmarkDatasetConfig
+
+
+@dataclass(frozen=True)
+class EvaluationParserConfig:
+    strict_boxed_only: bool
+
+
+@dataclass(frozen=True)
+class EvaluationInferenceConfig:
+    backend: str
+    max_new_tokens: int
+    device: str
+    dtype: str
+
+
+@dataclass(frozen=True)
 class EvaluationConfig:
     publish: tuple[str, ...]
+    datasets: EvaluationDatasetsConfig
+    parser: EvaluationParserConfig
+    inference: EvaluationInferenceConfig
     greedy: EvaluationGreedyConfig
     sampled: EvaluationSampledConfig
 
@@ -118,4 +145,3 @@ class RunContext:
     seed: int
     started_at: str
     paths: RunPaths
-
