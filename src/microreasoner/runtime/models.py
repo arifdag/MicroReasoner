@@ -159,6 +159,85 @@ class DataPipelineConfig:
 
 
 @dataclass(frozen=True)
+class TrainSFTLoRAConfig:
+    r: int
+    alpha: int
+    dropout: float
+    target_modules: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TrainSFTQuantizationConfig:
+    enabled: bool
+    bnb_4bit_compute_dtype: str
+    double_quant: bool
+    quant_type: str
+
+
+@dataclass(frozen=True)
+class TrainSFTOptimConfig:
+    lr: float
+    weight_decay: float
+    warmup_ratio: float
+    scheduler: str
+
+
+@dataclass(frozen=True)
+class TrainSFTBatchConfig:
+    per_device: int
+    grad_accum: int
+    max_seq_len: int
+
+
+@dataclass(frozen=True)
+class TrainSFTRunConfig:
+    epochs: int
+    max_steps: int
+    eval_every_steps: int
+    save_every_steps: int
+    save_every_minutes: int
+    logging_steps: int
+    max_eval_samples: int
+
+
+@dataclass(frozen=True)
+class TrainSFTCheckpointConfig:
+    save_total_limit: int
+    resume_strict: bool
+
+
+@dataclass(frozen=True)
+class TrainSFTSelectionConfig:
+    primary_metric: str
+    secondary_metric: str
+
+
+@dataclass(frozen=True)
+class TrainSFTGateConfig:
+    schema_min: float
+    baseline_greedy_pass_at_1: float
+
+
+@dataclass(frozen=True)
+class TrainSFTBackendConfig:
+    trainer: str
+
+
+@dataclass(frozen=True)
+class TrainSFTConfig:
+    mode: str
+    lora: TrainSFTLoRAConfig
+    quantization: TrainSFTQuantizationConfig
+    optim: TrainSFTOptimConfig
+    batch: TrainSFTBatchConfig
+    run: TrainSFTRunConfig
+    checkpoint: TrainSFTCheckpointConfig
+    selection: TrainSFTSelectionConfig
+    gates: TrainSFTGateConfig
+    backend: TrainSFTBackendConfig
+
+
+@dataclass(frozen=True)
 class GateConfig:
     strict_qa: bool
     fail_on_missing_metrics: bool
@@ -174,6 +253,7 @@ class ResolvedConfig:
     model: ModelConfig
     data: DataConfig
     data_pipeline: DataPipelineConfig
+    train_sft: TrainSFTConfig
     reward: RewardConfig
     evaluation: EvaluationConfig
     gates: GateConfig

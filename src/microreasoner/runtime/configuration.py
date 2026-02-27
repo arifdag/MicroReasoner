@@ -34,6 +34,16 @@ from microreasoner.runtime.models import (
     RewardThresholdConfig,
     RewardWeightsConfig,
     SFTDataConfig,
+    TrainSFTBackendConfig,
+    TrainSFTBatchConfig,
+    TrainSFTCheckpointConfig,
+    TrainSFTConfig,
+    TrainSFTGateConfig,
+    TrainSFTLoRAConfig,
+    TrainSFTOptimConfig,
+    TrainSFTQuantizationConfig,
+    TrainSFTRunConfig,
+    TrainSFTSelectionConfig,
 )
 
 
@@ -197,6 +207,7 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
     model_raw = _as_dict(raw, "model")
     data_raw = _as_dict(raw, "data")
     data_pipeline_raw = _as_dict(raw, "data_pipeline")
+    train_sft_raw = _as_dict(raw, "train_sft")
     reward_raw = _as_dict(raw, "reward")
     evaluation_raw = _as_dict(raw, "evaluation")
     gates_raw = _as_dict(raw, "gates")
@@ -222,6 +233,16 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
     pipeline_rl_raw = _as_dict(data_pipeline_raw, "rl")
     pipeline_source_rows = _require_mapping_list(data_pipeline_raw, "input_sources")
     pipeline_rule_rows = _require_mapping_list(pipeline_rl_raw, "curriculum_rules")
+
+    train_sft_lora_raw = _as_dict(train_sft_raw, "lora")
+    train_sft_quant_raw = _as_dict(train_sft_raw, "quantization")
+    train_sft_optim_raw = _as_dict(train_sft_raw, "optim")
+    train_sft_batch_raw = _as_dict(train_sft_raw, "batch")
+    train_sft_run_raw = _as_dict(train_sft_raw, "run")
+    train_sft_checkpoint_raw = _as_dict(train_sft_raw, "checkpoint")
+    train_sft_selection_raw = _as_dict(train_sft_raw, "selection")
+    train_sft_gate_raw = _as_dict(train_sft_raw, "gates")
+    train_sft_backend_raw = _as_dict(train_sft_raw, "backend")
 
     if len(pipeline_source_rows) == 0:
         raise RuntimeConfigError("data_pipeline.input_sources must include at least one source")
@@ -290,6 +311,60 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
                 benchmark_mix_targets=_require_float_mapping(
                     pipeline_rl_raw, "benchmark_mix_targets"
                 ),
+            ),
+        ),
+        train_sft=TrainSFTConfig(
+            mode=_require_str(train_sft_raw, "mode"),
+            lora=TrainSFTLoRAConfig(
+                r=_require_int(train_sft_lora_raw, "r"),
+                alpha=_require_int(train_sft_lora_raw, "alpha"),
+                dropout=_require_float(train_sft_lora_raw, "dropout"),
+                target_modules=_require_str_list(train_sft_lora_raw, "target_modules"),
+            ),
+            quantization=TrainSFTQuantizationConfig(
+                enabled=_require_bool(train_sft_quant_raw, "enabled"),
+                bnb_4bit_compute_dtype=_require_str(
+                    train_sft_quant_raw, "bnb_4bit_compute_dtype"
+                ),
+                double_quant=_require_bool(train_sft_quant_raw, "double_quant"),
+                quant_type=_require_str(train_sft_quant_raw, "quant_type"),
+            ),
+            optim=TrainSFTOptimConfig(
+                lr=_require_float(train_sft_optim_raw, "lr"),
+                weight_decay=_require_float(train_sft_optim_raw, "weight_decay"),
+                warmup_ratio=_require_float(train_sft_optim_raw, "warmup_ratio"),
+                scheduler=_require_str(train_sft_optim_raw, "scheduler"),
+            ),
+            batch=TrainSFTBatchConfig(
+                per_device=_require_int(train_sft_batch_raw, "per_device"),
+                grad_accum=_require_int(train_sft_batch_raw, "grad_accum"),
+                max_seq_len=_require_int(train_sft_batch_raw, "max_seq_len"),
+            ),
+            run=TrainSFTRunConfig(
+                epochs=_require_int(train_sft_run_raw, "epochs"),
+                max_steps=_require_int(train_sft_run_raw, "max_steps"),
+                eval_every_steps=_require_int(train_sft_run_raw, "eval_every_steps"),
+                save_every_steps=_require_int(train_sft_run_raw, "save_every_steps"),
+                save_every_minutes=_require_int(train_sft_run_raw, "save_every_minutes"),
+                logging_steps=_require_int(train_sft_run_raw, "logging_steps"),
+                max_eval_samples=_require_int(train_sft_run_raw, "max_eval_samples"),
+            ),
+            checkpoint=TrainSFTCheckpointConfig(
+                save_total_limit=_require_int(train_sft_checkpoint_raw, "save_total_limit"),
+                resume_strict=_require_bool(train_sft_checkpoint_raw, "resume_strict"),
+            ),
+            selection=TrainSFTSelectionConfig(
+                primary_metric=_require_str(train_sft_selection_raw, "primary_metric"),
+                secondary_metric=_require_str(train_sft_selection_raw, "secondary_metric"),
+            ),
+            gates=TrainSFTGateConfig(
+                schema_min=_require_float(train_sft_gate_raw, "schema_min"),
+                baseline_greedy_pass_at_1=_require_float(
+                    train_sft_gate_raw, "baseline_greedy_pass_at_1"
+                ),
+            ),
+            backend=TrainSFTBackendConfig(
+                trainer=_require_str(train_sft_backend_raw, "trainer")
             ),
         ),
         reward=RewardConfig(

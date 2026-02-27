@@ -56,16 +56,16 @@ def test_run_id_format() -> None:
     assert re.match(r"^train-sft-\d{8}T\d{6}Z-[0-9a-f]{8}$", run_id)
 
 
-def test_train_scaffold_creates_run_artifacts(tmp_path: Path) -> None:
+def test_train_grpo_scaffold_creates_run_artifacts(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     _write_text(config_path, "{}\n")
     output_root = tmp_path / "runs"
-    run_id = "unit-train-sft"
+    run_id = "unit-train-grpo"
 
     code = main(
         [
             "train",
-            "sft",
+            "grpo",
             "--config",
             str(config_path),
             "--run-id",
@@ -142,4 +142,3 @@ def test_override_failure_does_not_create_run_dir(tmp_path: Path) -> None:
     )
     assert code == 1
     assert not (output_root / "bad-override").exists()
-
