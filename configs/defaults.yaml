@@ -1,0 +1,186 @@
+schema_version: "1.0.0"
+project:
+  name: "microreasoner"
+  mode: "phase0-contracts"
+
+model:
+  default_base_model: "Qwen/Qwen2.5-Math-1.5B-Instruct"
+  fallback_base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+
+data:
+  strategy: "balanced_mix"
+  sft:
+    primary_dataset: "openr1_math_subset"
+    secondary_datasets:
+      - "gsm8k_small_mix"
+      - "math_small_mix"
+  rl:
+    curriculum:
+      - "gsm8k_heavy"
+      - "gsm8k_math_mixed"
+
+data_pipeline:
+  schema_version: "1.0.0"
+  input_sources:
+    - name: "openr1_math_subset"
+      adapter: "canonical_jsonl"
+      path: "artifacts/raw/openr1_math_subset.jsonl"
+    - name: "gsm8k_small_mix"
+      adapter: "canonical_jsonl"
+      path: "artifacts/raw/gsm8k_small_mix.jsonl"
+    - name: "math_small_mix"
+      adapter: "canonical_jsonl"
+      path: "artifacts/raw/math_small_mix.jsonl"
+  split:
+    strategy: "hash"
+    train_ratio: 0.9
+    val_ratio: 0.1
+    seed: 42
+  filters:
+    min_think_tokens: 1
+    max_think_tokens: 1200
+    require_single_boxed_answer: true
+    drop_duplicates: true
+  outputs:
+    root_dir: "artifacts/datasets"
+    write_rejects: true
+    compression: "none"
+  rl:
+    curriculum_rules:
+      - name: "gsm8k_heavy"
+        benchmarks: ["gsm8k"]
+      - name: "gsm8k_math_mixed"
+        benchmarks: ["gsm8k", "math"]
+    benchmark_mix_targets:
+      gsm8k: 0.7
+      math: 0.3
+
+train_sft:
+  mode: "auto"
+  lora:
+    r: 64
+    alpha: 128
+    dropout: 0.05
+    target_modules:
+      - "q_proj"
+      - "k_proj"
+      - "v_proj"
+      - "o_proj"
+      - "gate_proj"
+      - "up_proj"
+      - "down_proj"
+  quantization:
+    enabled: true
+    bnb_4bit_compute_dtype: "bfloat16"
+    double_quant: true
+    quant_type: "nf4"
+  optim:
+    lr: 0.0002
+    weight_decay: 0.0
+    warmup_ratio: 0.03
+    scheduler: "cosine"
+  batch:
+    per_device: 1
+    grad_accum: 32
+    max_seq_len: 2048
+  run:
+    epochs: 1
+    max_steps: 300
+    eval_every_steps: 50
+    save_every_steps: 50
+    save_every_minutes: 30
+    logging_steps: 10
+    max_eval_samples: 128
+  checkpoint:
+    save_total_limit: 3
+    resume_strict: true
+  selection:
+    primary_metric: "schema_compliance"
+    secondary_metric: "greedy_pass_at_1"
+  gates:
+    schema_min: 0.98
+    baseline_greedy_pass_at_1: 0.0
+  backend:
+    trainer: "transformers"
+
+train_grpo:
+  algo:
+    loss_type: "dr_grpo"
+    group_size: 8
+    scale_rewards: "batch"
+    kl_beta: 0.0
+  optim:
+    lr: 0.00003
+    weight_decay: 0.0
+    warmup_ratio: 0.03
+    scheduler: "cosine"
+  batch:
+    per_device: 1
+    grad_accum: 16
+    max_prompt_len: 512
+    max_completion_len: 256
+  run:
+    max_steps: 300
+    eval_every_steps: 50
+    save_every_steps: 50
+    save_every_minutes: 30
+    logging_steps: 10
+    max_eval_samples: 128
+  checkpoint:
+    save_total_limit: 3
+    resume_strict: true
+  backend:
+    trainer: "trl"
+  gates:
+    min_reward_std: 0.01
+    max_parser_failure_rate: 0.02
+    min_schema_compliance_rate: 0.98
+  curriculum:
+    stage_schedule:
+      - name: "gsm8k_heavy"
+        step_start: 0
+        step_end: 149
+      - name: "gsm8k_math_mixed"
+        step_start: 150
+        step_end: 1000000
+
+reward:
+  format:
+    response_schema: "<think>...</think>\\n<answer>\\boxed{...}</answer>"
+  weights:
+    correctness: 1.0
+    schema: 0.2
+    length: 0.05
+  thresholds:
+    parser_failure_rate_max: 0.02
+    schema_compliance_rate_min: 0.98
+
+evaluation:
+  publish:
+    - "greedy_pass@1"
+    - "sampled_pass@1"
+  datasets:
+    gsm8k:
+      path: "artifacts/datasets/gsm8k_eval.jsonl"
+    math:
+      path: "artifacts/datasets/math_eval.jsonl"
+  parser:
+    strict_boxed_only: true
+  inference:
+    backend: "transformers"
+    max_new_tokens: 512
+    device: "auto"
+    dtype: "auto"
+  greedy:
+    temperature: 0.0
+  sampled:
+    temperature: 0.6
+    top_p: 0.95
+    num_samples: 32
+
+gates:
+  strict_qa: true
+  fail_on_missing_metrics: true
+  fail_on_resume_test_failure: true
+  fail_on_dataset_hash_mismatch: true
+  fail_on_eval_config_drift: true

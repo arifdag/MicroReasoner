@@ -1,0 +1,357 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class ProjectConfig:
+    name: str
+    mode: str
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    default_base_model: str
+    fallback_base_model: str | None
+
+
+@dataclass(frozen=True)
+class SFTDataConfig:
+    primary_dataset: str
+    secondary_datasets: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RLDataConfig:
+    curriculum: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DataConfig:
+    strategy: str
+    sft: SFTDataConfig
+    rl: RLDataConfig
+
+
+@dataclass(frozen=True)
+class RewardFormatConfig:
+    response_schema: str
+
+
+@dataclass(frozen=True)
+class RewardWeightsConfig:
+    correctness: float
+    schema: float
+    length: float
+
+
+@dataclass(frozen=True)
+class RewardThresholdConfig:
+    parser_failure_rate_max: float
+    schema_compliance_rate_min: float
+
+
+@dataclass(frozen=True)
+class RewardConfig:
+    format: RewardFormatConfig
+    weights: RewardWeightsConfig
+    thresholds: RewardThresholdConfig
+
+
+@dataclass(frozen=True)
+class EvaluationGreedyConfig:
+    temperature: float
+
+
+@dataclass(frozen=True)
+class EvaluationSampledConfig:
+    temperature: float
+    top_p: float
+    num_samples: int
+
+
+@dataclass(frozen=True)
+class BenchmarkDatasetConfig:
+    path: str
+
+
+@dataclass(frozen=True)
+class EvaluationDatasetsConfig:
+    gsm8k: BenchmarkDatasetConfig
+    math: BenchmarkDatasetConfig
+
+
+@dataclass(frozen=True)
+class EvaluationParserConfig:
+    strict_boxed_only: bool
+
+
+@dataclass(frozen=True)
+class EvaluationInferenceConfig:
+    backend: str
+    max_new_tokens: int
+    device: str
+    dtype: str
+
+
+@dataclass(frozen=True)
+class EvaluationConfig:
+    publish: tuple[str, ...]
+    datasets: EvaluationDatasetsConfig
+    parser: EvaluationParserConfig
+    inference: EvaluationInferenceConfig
+    greedy: EvaluationGreedyConfig
+    sampled: EvaluationSampledConfig
+
+
+@dataclass(frozen=True)
+class DataSourceConfig:
+    name: str
+    adapter: str
+    path: str
+
+
+@dataclass(frozen=True)
+class DataSplitConfig:
+    strategy: str
+    train_ratio: float
+    val_ratio: float
+    seed: int
+
+
+@dataclass(frozen=True)
+class DataFilterConfig:
+    min_think_tokens: int
+    max_think_tokens: int
+    require_single_boxed_answer: bool
+    drop_duplicates: bool
+
+
+@dataclass(frozen=True)
+class DataOutputConfig:
+    root_dir: str
+    write_rejects: bool
+    compression: str
+
+
+@dataclass(frozen=True)
+class RLCurriculumRuleConfig:
+    name: str
+    benchmarks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RLDataPipelineConfig:
+    curriculum_rules: tuple[RLCurriculumRuleConfig, ...]
+    benchmark_mix_targets: dict[str, float]
+
+
+@dataclass(frozen=True)
+class DataPipelineConfig:
+    schema_version: str
+    input_sources: tuple[DataSourceConfig, ...]
+    split: DataSplitConfig
+    filters: DataFilterConfig
+    outputs: DataOutputConfig
+    rl: RLDataPipelineConfig
+
+
+@dataclass(frozen=True)
+class TrainSFTLoRAConfig:
+    r: int
+    alpha: int
+    dropout: float
+    target_modules: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TrainSFTQuantizationConfig:
+    enabled: bool
+    bnb_4bit_compute_dtype: str
+    double_quant: bool
+    quant_type: str
+
+
+@dataclass(frozen=True)
+class TrainSFTOptimConfig:
+    lr: float
+    weight_decay: float
+    warmup_ratio: float
+    scheduler: str
+
+
+@dataclass(frozen=True)
+class TrainSFTBatchConfig:
+    per_device: int
+    grad_accum: int
+    max_seq_len: int
+
+
+@dataclass(frozen=True)
+class TrainSFTRunConfig:
+    epochs: int
+    max_steps: int
+    eval_every_steps: int
+    save_every_steps: int
+    save_every_minutes: int
+    logging_steps: int
+    max_eval_samples: int
+
+
+@dataclass(frozen=True)
+class TrainSFTCheckpointConfig:
+    save_total_limit: int
+    resume_strict: bool
+
+
+@dataclass(frozen=True)
+class TrainSFTSelectionConfig:
+    primary_metric: str
+    secondary_metric: str
+
+
+@dataclass(frozen=True)
+class TrainSFTGateConfig:
+    schema_min: float
+    baseline_greedy_pass_at_1: float
+
+
+@dataclass(frozen=True)
+class TrainSFTBackendConfig:
+    trainer: str
+
+
+@dataclass(frozen=True)
+class TrainSFTConfig:
+    mode: str
+    lora: TrainSFTLoRAConfig
+    quantization: TrainSFTQuantizationConfig
+    optim: TrainSFTOptimConfig
+    batch: TrainSFTBatchConfig
+    run: TrainSFTRunConfig
+    checkpoint: TrainSFTCheckpointConfig
+    selection: TrainSFTSelectionConfig
+    gates: TrainSFTGateConfig
+    backend: TrainSFTBackendConfig
+
+
+@dataclass(frozen=True)
+class TrainGRPOAlgoConfig:
+    loss_type: str
+    group_size: int
+    scale_rewards: str
+    kl_beta: float
+
+
+@dataclass(frozen=True)
+class TrainGRPOOptimConfig:
+    lr: float
+    weight_decay: float
+    warmup_ratio: float
+    scheduler: str
+
+
+@dataclass(frozen=True)
+class TrainGRPOBatchConfig:
+    per_device: int
+    grad_accum: int
+    max_prompt_len: int
+    max_completion_len: int
+
+
+@dataclass(frozen=True)
+class TrainGRPORunConfig:
+    max_steps: int
+    eval_every_steps: int
+    save_every_steps: int
+    save_every_minutes: int
+    logging_steps: int
+    max_eval_samples: int
+
+
+@dataclass(frozen=True)
+class TrainGRPOCheckpointConfig:
+    save_total_limit: int
+    resume_strict: bool
+
+
+@dataclass(frozen=True)
+class TrainGRPOBackendConfig:
+    trainer: str
+
+
+@dataclass(frozen=True)
+class TrainGRPOGateConfig:
+    min_reward_std: float
+    max_parser_failure_rate: float
+    min_schema_compliance_rate: float
+
+
+@dataclass(frozen=True)
+class TrainGRPOCurriculumStageConfig:
+    name: str
+    step_start: int
+    step_end: int
+
+
+@dataclass(frozen=True)
+class TrainGRPOCurriculumConfig:
+    stage_schedule: tuple[TrainGRPOCurriculumStageConfig, ...]
+
+
+@dataclass(frozen=True)
+class TrainGRPOConfig:
+    algo: TrainGRPOAlgoConfig
+    optim: TrainGRPOOptimConfig
+    batch: TrainGRPOBatchConfig
+    run: TrainGRPORunConfig
+    checkpoint: TrainGRPOCheckpointConfig
+    backend: TrainGRPOBackendConfig
+    gates: TrainGRPOGateConfig
+    curriculum: TrainGRPOCurriculumConfig
+
+
+@dataclass(frozen=True)
+class GateConfig:
+    strict_qa: bool
+    fail_on_missing_metrics: bool
+    fail_on_resume_test_failure: bool
+    fail_on_dataset_hash_mismatch: bool
+    fail_on_eval_config_drift: bool
+
+
+@dataclass(frozen=True)
+class ResolvedConfig:
+    schema_version: str
+    project: ProjectConfig
+    model: ModelConfig
+    data: DataConfig
+    data_pipeline: DataPipelineConfig
+    train_sft: TrainSFTConfig
+    train_grpo: TrainGRPOConfig
+    reward: RewardConfig
+    evaluation: EvaluationConfig
+    gates: GateConfig
+    raw: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RunPaths:
+    run_dir: Path
+    logs_dir: Path
+    events_log_path: Path
+    summary_path: Path
+    config_path: Path
+    command_meta_path: Path
+    errors_path: Path
+
+
+@dataclass(frozen=True)
+class RunContext:
+    run_id: str
+    command_name: str
+    seed: int
+    started_at: str
+    paths: RunPaths

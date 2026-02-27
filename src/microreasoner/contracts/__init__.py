@@ -1,0 +1,2 @@
+"""Contracts and validation utilities."""
+
