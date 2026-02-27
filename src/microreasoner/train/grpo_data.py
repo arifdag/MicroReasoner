@@ -47,6 +47,14 @@ def _resolve_artifact_path(base: Path, artifact: str) -> Path:
     path = Path(artifact)
     if path.is_absolute():
         return path
+    candidates = [
+        path,
+        repo_root() / path,
+        base / path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
     return (base / path).resolve()
 
 

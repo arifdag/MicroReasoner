@@ -111,3 +111,85 @@ def test_load_grpo_train_input_rejects_wrong_manifest_type(tmp_path: Path) -> No
 
     with pytest.raises(GRPODataError):
         load_grpo_train_input(manifest_path)
+
+
+def test_load_grpo_train_input_resolves_repo_relative_artifact_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    dataset_dir = tmp_path / "artifacts" / "datasets" / "rl" / "demo"
+    train_path = dataset_dir / "train_prompts.jsonl"
+    val_path = dataset_dir / "val_prompts.jsonl"
+    _write_jsonl(
+        train_path,
+        [
+            {
+                "record_id": "t1",
+                "prompt": "Q1",
+                "gold_answer": "2",
+                "split": "train",
+                "source_name": "source",
+                "benchmark": "gsm8k",
+                "difficulty_tag": "easy",
+                "curriculum_stage": "gsm8k_heavy",
+            }
+        ],
+    )
+    _write_jsonl(
+        val_path,
+        [
+            {
+                "record_id": "v1",
+                "prompt": "Q2",
+                "gold_answer": "5",
+                "split": "val",
+                "source_name": "source",
+                "benchmark": "math",
+                "difficulty_tag": "medium",
+                "curriculum_stage": "gsm8k_math_mixed",
+            }
+        ],
+    )
+
+    manifest_path = dataset_dir / "manifest.json"
+    _write_json(
+        manifest_path,
+        {
+            "schema_version": "1.0.0",
+            "dataset_type": "rl",
+            "dataset_id": "deadbeefcafebabe",
+            "build_timestamp": "2026-02-27T00:00:00Z",
+            "seed": 42,
+            "inputs": [
+                {
+                    "name": "source",
+                    "adapter": "canonical_jsonl",
+                    "path": "source.jsonl",
+                    "resolved_path": str(tmp_path / "source.jsonl"),
+                    "hash": "a" * 64,
+                }
+            ],
+            "filters": {
+                "min_think_tokens": 1,
+                "max_think_tokens": 1200,
+                "require_single_boxed_answer": True,
+                "drop_duplicates": True,
+            },
+            "split_counts": {"train": 1, "val": 1},
+            "reject_stats": {},
+            "artifact_paths": {
+                "train": "artifacts/datasets/rl/demo/train_prompts.jsonl",
+                "val": "artifacts/datasets/rl/demo/val_prompts.jsonl",
+                "manifest": "artifacts/datasets/rl/demo/manifest.json",
+            },
+            "artifact_hashes": {
+                "train": "b" * 64,
+                "val": "c" * 64,
+            },
+        },
+    )
+
+    loaded = load_grpo_train_input(manifest_path)
+    assert loaded.train_path == train_path.resolve()
+    assert loaded.val_path == val_path.resolve()

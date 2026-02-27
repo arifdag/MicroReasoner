@@ -95,3 +95,83 @@ def test_load_sft_train_input_from_manifest(tmp_path: Path) -> None:
     assert len(loaded.val_records) == 1
     assert loaded.train_records[0].gold_answer == "2"
 
+
+def test_load_sft_train_input_resolves_repo_relative_artifact_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    dataset_dir = tmp_path / "artifacts" / "datasets" / "sft" / "demo"
+    train_path = dataset_dir / "train.jsonl"
+    val_path = dataset_dir / "val.jsonl"
+    _write_jsonl(
+        train_path,
+        [
+            {
+                "record_id": "a1",
+                "prompt": "q1",
+                "target_response": "<think>t</think>\n<answer>\\boxed{2}</answer>",
+                "split": "train",
+                "source_name": "s",
+                "benchmark": "gsm8k",
+                "quality_flags": ["normalized"],
+            }
+        ],
+    )
+    _write_jsonl(
+        val_path,
+        [
+            {
+                "record_id": "b1",
+                "prompt": "q2",
+                "target_response": "<think>t</think>\n<answer>\\boxed{3}</answer>",
+                "split": "val",
+                "source_name": "s",
+                "benchmark": "math",
+                "quality_flags": ["normalized"],
+            }
+        ],
+    )
+
+    manifest_path = dataset_dir / "manifest.json"
+    _write_json(
+        manifest_path,
+        {
+            "schema_version": "1.0.0",
+            "dataset_type": "sft",
+            "dataset_id": "abcdef1234567890",
+            "build_timestamp": "2026-02-27T00:00:00Z",
+            "seed": 42,
+            "inputs": [
+                {
+                    "name": "raw",
+                    "adapter": "canonical_jsonl",
+                    "path": "x.jsonl",
+                    "resolved_path": str(tmp_path / "x.jsonl"),
+                    "hash": "0" * 64,
+                }
+            ],
+            "filters": {
+                "min_think_tokens": 1,
+                "max_think_tokens": 1000,
+                "require_single_boxed_answer": True,
+                "drop_duplicates": True,
+            },
+            "split_counts": {"train": 1, "val": 1},
+            "reject_stats": {"accepted_total": 2},
+            "artifact_paths": {
+                "train": "artifacts/datasets/sft/demo/train.jsonl",
+                "val": "artifacts/datasets/sft/demo/val.jsonl",
+                "manifest": "artifacts/datasets/sft/demo/manifest.json",
+            },
+            "artifact_hashes": {
+                "train": "1" * 64,
+                "val": "2" * 64,
+            },
+        },
+    )
+
+    loaded = load_sft_train_input(manifest_path)
+    assert loaded.train_path == train_path.resolve()
+    assert loaded.val_path == val_path.resolve()
+
