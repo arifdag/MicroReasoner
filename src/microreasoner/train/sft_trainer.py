@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import time
 from dataclasses import dataclass
@@ -290,6 +291,19 @@ def _build_collator(torch_module: Any, pad_token_id: int) -> Any:
     return collate
 
 
+def _build_training_arguments(training_arguments_cls: Any, kwargs: dict[str, Any]) -> Any:
+    params = inspect.signature(training_arguments_cls.__init__).parameters
+    accepts_var_kwargs = any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in params.values()
+    )
+    if accepts_var_kwargs:
+        return training_arguments_cls(**kwargs)
+
+    supported = {name for name in params.keys() if name != "self"}
+    filtered = {key: value for key, value in kwargs.items() if key in supported}
+    return training_arguments_cls(**filtered)
+
+
 def _run_transformers_training(
     *,
     config: ResolvedConfig,
@@ -327,37 +341,44 @@ def _run_transformers_training(
     )
     collator = _build_collator(torch, model_bundle.tokenizer.pad_token_id)
 
-    training_args = TrainingArguments(
-        output_dir=str(checkpoints_root),
-        overwrite_output_dir=False,
-        per_device_train_batch_size=config.train_sft.batch.per_device,
-        per_device_eval_batch_size=config.train_sft.batch.per_device,
-        gradient_accumulation_steps=config.train_sft.batch.grad_accum,
-        learning_rate=config.train_sft.optim.lr,
-        warmup_ratio=config.train_sft.optim.warmup_ratio,
-        lr_scheduler_type=config.train_sft.optim.scheduler,
-        weight_decay=config.train_sft.optim.weight_decay,
-        num_train_epochs=float(config.train_sft.run.epochs),
-        max_steps=max_steps,
-        logging_steps=max(1, config.train_sft.run.logging_steps),
-        save_steps=max(1, config.train_sft.run.save_every_steps),
-        save_total_limit=max(1, config.train_sft.checkpoint.save_total_limit),
-        report_to=[],
-        remove_unused_columns=False,
-        dataloader_pin_memory=False,
-        gradient_checkpointing=True,
-        bf16=torch.cuda.is_available(),
-        fp16=False,
-    )
+    training_arg_kwargs: dict[str, Any] = {
+        "output_dir": str(checkpoints_root),
+        "overwrite_output_dir": False,
+        "per_device_train_batch_size": config.train_sft.batch.per_device,
+        "per_device_eval_batch_size": config.train_sft.batch.per_device,
+        "gradient_accumulation_steps": config.train_sft.batch.grad_accum,
+        "learning_rate": config.train_sft.optim.lr,
+        "warmup_ratio": config.train_sft.optim.warmup_ratio,
+        "lr_scheduler_type": config.train_sft.optim.scheduler,
+        "weight_decay": config.train_sft.optim.weight_decay,
+        "num_train_epochs": float(config.train_sft.run.epochs),
+        "max_steps": max_steps,
+        "logging_steps": max(1, config.train_sft.run.logging_steps),
+        "save_steps": max(1, config.train_sft.run.save_every_steps),
+        "save_total_limit": max(1, config.train_sft.checkpoint.save_total_limit),
+        "report_to": [],
+        "remove_unused_columns": False,
+        "dataloader_pin_memory": False,
+        "gradient_checkpointing": True,
+        "bf16": torch.cuda.is_available(),
+        "fp16": False,
+    }
+    training_args = _build_training_arguments(TrainingArguments, training_arg_kwargs)
 
-    trainer = Trainer(
-        model=model_bundle.model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        data_collator=collator,
-        tokenizer=model_bundle.tokenizer,
-    )
+    trainer_kwargs = {
+        "model": model_bundle.model,
+        "args": training_args,
+        "train_dataset": train_dataset,
+        "eval_dataset": eval_dataset,
+        "data_collator": collator,
+    }
+    try:
+        trainer = Trainer(**trainer_kwargs, tokenizer=model_bundle.tokenizer)
+    except TypeError:
+        try:
+            trainer = Trainer(**trainer_kwargs, processing_class=model_bundle.tokenizer)
+        except TypeError:
+            trainer = Trainer(**trainer_kwargs)
 
     resume_arg: str | None = None
     if resume_from is not None and resume_from.exists():
