@@ -5,6 +5,10 @@ import sys
 from pathlib import Path
 
 from microreasoner.contracts.validation import validate_run_dir
+from microreasoner.runtime.data_command import (
+    execute_data_build_command,
+    execute_data_inspect_command,
+)
 from microreasoner.runtime.eval_command import execute_eval_command
 from microreasoner.runtime.scaffold import execute_scaffold_command
 
@@ -46,11 +50,64 @@ def _add_train_subcommands(subparsers: argparse._SubParsersAction[argparse.Argum
     )
 
 
+def _add_data_subcommands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    data_parser = subparsers.add_parser("data", help="Dataset pipeline commands")
+    data_subparsers = data_parser.add_subparsers(dest="data_command", required=True)
+
+    build_sft = data_subparsers.add_parser("build-sft", help="Build SFT dataset")
+    build_sft.add_argument("--config", required=True, help="Path to data pipeline config")
+    build_sft.add_argument("--run-id", required=False, help="Optional explicit run id")
+    build_sft.add_argument(
+        "--source-dir",
+        required=False,
+        help="Optional directory overriding source files by filename",
+    )
+    build_sft.add_argument(
+        "--set",
+        dest="set_overrides",
+        action="append",
+        default=[],
+        help="Config override in dotted form key=value (can be provided multiple times)",
+    )
+    build_sft.add_argument(
+        "--output-dir",
+        required=False,
+        help="Optional dataset output root (default from config)",
+    )
+    build_sft.add_argument("--seed", required=False, type=int, help="Optional split seed override")
+
+    build_rl = data_subparsers.add_parser("build-rl", help="Build RL prompt dataset")
+    build_rl.add_argument("--config", required=True, help="Path to data pipeline config")
+    build_rl.add_argument("--run-id", required=False, help="Optional explicit run id")
+    build_rl.add_argument(
+        "--source-dir",
+        required=False,
+        help="Optional directory overriding source files by filename",
+    )
+    build_rl.add_argument(
+        "--set",
+        dest="set_overrides",
+        action="append",
+        default=[],
+        help="Config override in dotted form key=value (can be provided multiple times)",
+    )
+    build_rl.add_argument(
+        "--output-dir",
+        required=False,
+        help="Optional dataset output root (default from config)",
+    )
+    build_rl.add_argument("--seed", required=False, type=int, help="Optional split seed override")
+
+    inspect = data_subparsers.add_parser("inspect", help="Inspect dataset manifest")
+    inspect.add_argument("--dataset-manifest", required=True, help="Path to dataset manifest JSON")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="microreasoner")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     _add_train_subcommands(subparsers)
+    _add_data_subcommands(subparsers)
 
     eval_parser = subparsers.add_parser("eval", help="Evaluation command")
     eval_parser.add_argument("--config", required=True, help="Path to eval config")
@@ -131,6 +188,21 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=Path(args.output_dir) if args.output_dir else None,
             dataset_dir=Path(args.dataset_dir) if args.dataset_dir else None,
             max_items=args.max_items,
+            seed_override=args.seed,
+        )
+
+    if args.command == "data":
+        if args.data_command == "inspect":
+            return execute_data_inspect_command(Path(args.dataset_manifest))
+
+        dataset_type = "sft" if args.data_command == "build-sft" else "rl"
+        return execute_data_build_command(
+            dataset_type=dataset_type,
+            config_path=Path(args.config),
+            cli_overrides=args.set_overrides,
+            run_id=args.run_id,
+            output_dir=Path(args.output_dir) if args.output_dir else None,
+            source_dir=Path(args.source_dir) if args.source_dir else None,
             seed_override=args.seed,
         )
 

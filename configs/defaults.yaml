@@ -19,6 +19,42 @@ data:
       - "gsm8k_heavy"
       - "gsm8k_math_mixed"
 
+data_pipeline:
+  schema_version: "1.0.0"
+  input_sources:
+    - name: "openr1_math_subset"
+      adapter: "canonical_jsonl"
+      path: "artifacts/raw/openr1_math_subset.jsonl"
+    - name: "gsm8k_small_mix"
+      adapter: "canonical_jsonl"
+      path: "artifacts/raw/gsm8k_small_mix.jsonl"
+    - name: "math_small_mix"
+      adapter: "canonical_jsonl"
+      path: "artifacts/raw/math_small_mix.jsonl"
+  split:
+    strategy: "hash"
+    train_ratio: 0.9
+    val_ratio: 0.1
+    seed: 42
+  filters:
+    min_think_tokens: 1
+    max_think_tokens: 1200
+    require_single_boxed_answer: true
+    drop_duplicates: true
+  outputs:
+    root_dir: "artifacts/datasets"
+    write_rejects: true
+    compression: "none"
+  rl:
+    curriculum_rules:
+      - name: "gsm8k_heavy"
+        benchmarks: ["gsm8k"]
+      - name: "gsm8k_math_mixed"
+        benchmarks: ["gsm8k", "math"]
+    benchmark_mix_targets:
+      gsm8k: 0.7
+      math: 0.3
+
 reward:
   format:
     response_schema: "<think>...</think>\\n<answer>\\boxed{...}</answer>"

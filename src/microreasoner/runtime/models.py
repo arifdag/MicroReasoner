@@ -107,6 +107,58 @@ class EvaluationConfig:
 
 
 @dataclass(frozen=True)
+class DataSourceConfig:
+    name: str
+    adapter: str
+    path: str
+
+
+@dataclass(frozen=True)
+class DataSplitConfig:
+    strategy: str
+    train_ratio: float
+    val_ratio: float
+    seed: int
+
+
+@dataclass(frozen=True)
+class DataFilterConfig:
+    min_think_tokens: int
+    max_think_tokens: int
+    require_single_boxed_answer: bool
+    drop_duplicates: bool
+
+
+@dataclass(frozen=True)
+class DataOutputConfig:
+    root_dir: str
+    write_rejects: bool
+    compression: str
+
+
+@dataclass(frozen=True)
+class RLCurriculumRuleConfig:
+    name: str
+    benchmarks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RLDataPipelineConfig:
+    curriculum_rules: tuple[RLCurriculumRuleConfig, ...]
+    benchmark_mix_targets: dict[str, float]
+
+
+@dataclass(frozen=True)
+class DataPipelineConfig:
+    schema_version: str
+    input_sources: tuple[DataSourceConfig, ...]
+    split: DataSplitConfig
+    filters: DataFilterConfig
+    outputs: DataOutputConfig
+    rl: RLDataPipelineConfig
+
+
+@dataclass(frozen=True)
 class GateConfig:
     strict_qa: bool
     fail_on_missing_metrics: bool
@@ -121,6 +173,7 @@ class ResolvedConfig:
     project: ProjectConfig
     model: ModelConfig
     data: DataConfig
+    data_pipeline: DataPipelineConfig
     reward: RewardConfig
     evaluation: EvaluationConfig
     gates: GateConfig

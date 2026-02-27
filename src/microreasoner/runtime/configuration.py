@@ -11,6 +11,11 @@ from microreasoner.runtime.errors import RuntimeConfigError
 from microreasoner.runtime.models import (
     BenchmarkDatasetConfig,
     DataConfig,
+    DataFilterConfig,
+    DataOutputConfig,
+    DataPipelineConfig,
+    DataSourceConfig,
+    DataSplitConfig,
     EvaluationConfig,
     EvaluationDatasetsConfig,
     EvaluationGreedyConfig,
@@ -22,6 +27,8 @@ from microreasoner.runtime.models import (
     ProjectConfig,
     ResolvedConfig,
     RLDataConfig,
+    RLDataPipelineConfig,
+    RLCurriculumRuleConfig,
     RewardConfig,
     RewardFormatConfig,
     RewardThresholdConfig,
@@ -162,10 +169,34 @@ def _require_str_list(source: dict[str, Any], key: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _require_mapping_list(source: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    value = source.get(key)
+    if not isinstance(value, list):
+        raise RuntimeConfigError(f"Expected list[object] at '{key}'")
+    if not all(isinstance(item, dict) for item in value):
+        raise RuntimeConfigError(f"Expected list[object] at '{key}'")
+    return list(value)
+
+
+def _require_float_mapping(source: dict[str, Any], key: str) -> dict[str, float]:
+    value = source.get(key)
+    if not isinstance(value, dict):
+        raise RuntimeConfigError(f"Expected object at '{key}'")
+    out: dict[str, float] = {}
+    for item_key, item_value in value.items():
+        if not isinstance(item_key, str):
+            raise RuntimeConfigError(f"Expected string keys in '{key}'")
+        if not isinstance(item_value, (int, float)):
+            raise RuntimeConfigError(f"Expected numeric values in '{key}'")
+        out[item_key] = float(item_value)
+    return out
+
+
 def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
     project_raw = _as_dict(raw, "project")
     model_raw = _as_dict(raw, "model")
     data_raw = _as_dict(raw, "data")
+    data_pipeline_raw = _as_dict(raw, "data_pipeline")
     reward_raw = _as_dict(raw, "reward")
     evaluation_raw = _as_dict(raw, "evaluation")
     gates_raw = _as_dict(raw, "gates")
@@ -185,6 +216,35 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
     eval_parser_raw = _as_dict(evaluation_raw, "parser")
     eval_inference_raw = _as_dict(evaluation_raw, "inference")
 
+    pipeline_split_raw = _as_dict(data_pipeline_raw, "split")
+    pipeline_filters_raw = _as_dict(data_pipeline_raw, "filters")
+    pipeline_outputs_raw = _as_dict(data_pipeline_raw, "outputs")
+    pipeline_rl_raw = _as_dict(data_pipeline_raw, "rl")
+    pipeline_source_rows = _require_mapping_list(data_pipeline_raw, "input_sources")
+    pipeline_rule_rows = _require_mapping_list(pipeline_rl_raw, "curriculum_rules")
+
+    if len(pipeline_source_rows) == 0:
+        raise RuntimeConfigError("data_pipeline.input_sources must include at least one source")
+
+    source_configs: list[DataSourceConfig] = []
+    for source_row in pipeline_source_rows:
+        source_configs.append(
+            DataSourceConfig(
+                name=_require_str(source_row, "name"),
+                adapter=_require_str(source_row, "adapter"),
+                path=_require_str(source_row, "path"),
+            )
+        )
+
+    curriculum_rules: list[RLCurriculumRuleConfig] = []
+    for rule_row in pipeline_rule_rows:
+        curriculum_rules.append(
+            RLCurriculumRuleConfig(
+                name=_require_str(rule_row, "name"),
+                benchmarks=_require_str_list(rule_row, "benchmarks"),
+            )
+        )
+
     return ResolvedConfig(
         schema_version=_require_str(raw, "schema_version"),
         project=ProjectConfig(
@@ -202,6 +262,35 @@ def to_resolved_config(raw: dict[str, Any]) -> ResolvedConfig:
                 secondary_datasets=_require_str_list(sft_raw, "secondary_datasets"),
             ),
             rl=RLDataConfig(curriculum=_require_str_list(rl_raw, "curriculum")),
+        ),
+        data_pipeline=DataPipelineConfig(
+            schema_version=_require_str(data_pipeline_raw, "schema_version"),
+            input_sources=tuple(source_configs),
+            split=DataSplitConfig(
+                strategy=_require_str(pipeline_split_raw, "strategy"),
+                train_ratio=_require_float(pipeline_split_raw, "train_ratio"),
+                val_ratio=_require_float(pipeline_split_raw, "val_ratio"),
+                seed=_require_int(pipeline_split_raw, "seed"),
+            ),
+            filters=DataFilterConfig(
+                min_think_tokens=_require_int(pipeline_filters_raw, "min_think_tokens"),
+                max_think_tokens=_require_int(pipeline_filters_raw, "max_think_tokens"),
+                require_single_boxed_answer=_require_bool(
+                    pipeline_filters_raw, "require_single_boxed_answer"
+                ),
+                drop_duplicates=_require_bool(pipeline_filters_raw, "drop_duplicates"),
+            ),
+            outputs=DataOutputConfig(
+                root_dir=_require_str(pipeline_outputs_raw, "root_dir"),
+                write_rejects=_require_bool(pipeline_outputs_raw, "write_rejects"),
+                compression=_require_str(pipeline_outputs_raw, "compression"),
+            ),
+            rl=RLDataPipelineConfig(
+                curriculum_rules=tuple(curriculum_rules),
+                benchmark_mix_targets=_require_float_mapping(
+                    pipeline_rl_raw, "benchmark_mix_targets"
+                ),
+            ),
         ),
         reward=RewardConfig(
             format=RewardFormatConfig(
