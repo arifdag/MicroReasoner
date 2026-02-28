@@ -111,9 +111,18 @@ def _validate_checkpoint_state(checkpoints: dict[str, Any], run_dir: Path, error
     if not isinstance(latest, str) or not latest:
         errors.append("Missing checkpoints.latest pointer")
     else:
-        latest_path = (run_dir / latest).resolve()
-        if not latest_path.exists():
-            errors.append(f"checkpoints.latest path does not exist: {latest}")
+        latest_path = Path(latest)
+        if latest_path.is_absolute():
+            exists = latest_path.exists()
+        else:
+            # Accept both run-relative pointers (contract default) and
+            # repository/CWD-relative pointers emitted by some runners.
+            exists = (run_dir / latest_path).exists() or latest_path.exists()
+        if not exists:
+            errors.append(
+                "checkpoints.latest path does not exist "
+                f"(checked run-relative and cwd-relative forms): {latest}"
+            )
 
     best = checkpoints.get("best")
     if not isinstance(best, str) or not best:

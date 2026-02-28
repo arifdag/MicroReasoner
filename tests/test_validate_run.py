@@ -160,3 +160,16 @@ def test_validate_run_fails_on_eval_sampling_config_drift(tmp_path: Path) -> Non
     assert not result.ok
     assert any("Evaluation sampling config drift detected across runs" == err for err in result.errors)
 
+
+def test_validate_run_accepts_cwd_relative_checkpoint_pointer_with_run_prefix(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir = _make_valid_run(tmp_path / "artifacts" / "runs" / "smoke-run")
+    checkpoints = _load_json(run_dir / "checkpoints.json")
+    checkpoints["latest"] = "artifacts/runs/smoke-run/checkpoints/latest.bin"
+    _write_json(run_dir / "checkpoints.json", checkpoints)
+
+    monkeypatch.chdir(tmp_path)
+    result = validate_run_dir(run_dir)
+    assert result.ok
+
