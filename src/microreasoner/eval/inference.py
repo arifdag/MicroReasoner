@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from microreasoner.eval.types import EvalExample
 
@@ -30,6 +31,22 @@ class InferenceEngine:
 
     def generate_sampled(self, prompt: str, example: EvalExample) -> list[str]:
         raise NotImplementedError
+
+
+def _safe_generate(model: Any, kwargs: dict[str, Any]) -> Any:
+    try:
+        return model.generate(**kwargs)
+    except ValueError as exc:
+        text = str(exc)
+        if (
+            "model_kwargs" in text
+            and "generator" in text
+            and "generator" in kwargs
+        ):
+            retry = dict(kwargs)
+            retry.pop("generator", None)
+            return model.generate(**retry)
+        raise
 
 
 class FixtureInferenceEngine(InferenceEngine):
@@ -112,18 +129,21 @@ class TransformersInferenceEngine(InferenceEngine):
             generator = torch.Generator(device=self._device)
             generator.manual_seed(self._settings.seed)
 
+        generate_kwargs: dict[str, Any] = {
+            **inputs,
+            "do_sample": do_sample,
+            "temperature": (temperature if do_sample else None),
+            "top_p": (top_p if do_sample else None),
+            "num_return_sequences": n,
+            "max_new_tokens": self._settings.max_new_tokens,
+            "pad_token_id": tokenizer.pad_token_id,
+            "eos_token_id": tokenizer.eos_token_id,
+        }
+        if generator is not None:
+            generate_kwargs["generator"] = generator
+
         with torch.no_grad():
-            output_ids = model.generate(
-                **inputs,
-                do_sample=do_sample,
-                temperature=temperature if do_sample else None,
-                top_p=top_p if do_sample else None,
-                num_return_sequences=n,
-                max_new_tokens=self._settings.max_new_tokens,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-                generator=generator,
-            )
+            output_ids = _safe_generate(model, generate_kwargs)
 
         if output_ids.dim() == 1:
             output_ids = output_ids.unsqueeze(0)
