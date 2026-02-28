@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import math
 import random
@@ -610,6 +611,34 @@ def _coerce_completion_text(value: Any) -> str:
     return str(value)
 
 
+def _build_grpo_config(grpo_config_cls: Any, kwargs: dict[str, Any]) -> Any:
+    params = inspect.signature(grpo_config_cls.__init__).parameters
+    accepts_var_kwargs = any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in params.values()
+    )
+    if accepts_var_kwargs:
+        return grpo_config_cls(**kwargs)
+
+    supported = {name for name in params.keys() if name != "self"}
+    adapted = dict(kwargs)
+
+    # TRL changed some GRPOConfig names across releases.
+    aliases: dict[str, tuple[str, ...]] = {
+        "max_prompt_length": ("max_prompt_len",),
+        "max_completion_length": ("max_completion_len",),
+    }
+    for source_name, target_names in aliases.items():
+        if source_name not in adapted or source_name in supported:
+            continue
+        for target_name in target_names:
+            if target_name in supported and target_name not in adapted:
+                adapted[target_name] = adapted[source_name]
+                break
+
+    filtered = {key: value for key, value in adapted.items() if key in supported}
+    return grpo_config_cls(**filtered)
+
+
 def _run_trl_training(
     *,
     config: ResolvedConfig,
@@ -735,27 +764,28 @@ def _run_trl_training(
         )
         return rewards
 
-    training_args = GRPOConfig(
-        output_dir=str(checkpoints_root),
-        max_steps=max_steps,
-        learning_rate=config.train_grpo.optim.lr,
-        weight_decay=config.train_grpo.optim.weight_decay,
-        warmup_ratio=config.train_grpo.optim.warmup_ratio,
-        lr_scheduler_type=config.train_grpo.optim.scheduler,
-        per_device_train_batch_size=config.train_grpo.batch.per_device,
-        gradient_accumulation_steps=config.train_grpo.batch.grad_accum,
-        num_generations=config.train_grpo.algo.group_size,
-        max_prompt_length=config.train_grpo.batch.max_prompt_len,
-        max_completion_length=config.train_grpo.batch.max_completion_len,
-        save_steps=max(1, config.train_grpo.run.save_every_steps),
-        logging_steps=max(1, config.train_grpo.run.logging_steps),
-        save_total_limit=max(1, config.train_grpo.checkpoint.save_total_limit),
-        eval_steps=max(1, eval_every_steps),
-        beta=config.train_grpo.algo.kl_beta,
-        loss_type=config.train_grpo.algo.loss_type,
-        scale_rewards=config.train_grpo.algo.scale_rewards,
-        report_to=[],
-    )
+    training_arg_kwargs: dict[str, Any] = {
+        "output_dir": str(checkpoints_root),
+        "max_steps": max_steps,
+        "learning_rate": config.train_grpo.optim.lr,
+        "weight_decay": config.train_grpo.optim.weight_decay,
+        "warmup_ratio": config.train_grpo.optim.warmup_ratio,
+        "lr_scheduler_type": config.train_grpo.optim.scheduler,
+        "per_device_train_batch_size": config.train_grpo.batch.per_device,
+        "gradient_accumulation_steps": config.train_grpo.batch.grad_accum,
+        "num_generations": config.train_grpo.algo.group_size,
+        "max_prompt_length": config.train_grpo.batch.max_prompt_len,
+        "max_completion_length": config.train_grpo.batch.max_completion_len,
+        "save_steps": max(1, config.train_grpo.run.save_every_steps),
+        "logging_steps": max(1, config.train_grpo.run.logging_steps),
+        "save_total_limit": max(1, config.train_grpo.checkpoint.save_total_limit),
+        "eval_steps": max(1, eval_every_steps),
+        "beta": config.train_grpo.algo.kl_beta,
+        "loss_type": config.train_grpo.algo.loss_type,
+        "scale_rewards": config.train_grpo.algo.scale_rewards,
+        "report_to": [],
+    }
+    training_args = _build_grpo_config(GRPOConfig, training_arg_kwargs)
 
     try:
         trainer = GRPOTrainer(
