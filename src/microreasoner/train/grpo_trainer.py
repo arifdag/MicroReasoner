@@ -611,32 +611,124 @@ def _coerce_completion_text(value: Any) -> str:
     return str(value)
 
 
-def _build_grpo_config(grpo_config_cls: Any, kwargs: dict[str, Any]) -> Any:
-    params = inspect.signature(grpo_config_cls.__init__).parameters
-    accepts_var_kwargs = any(
-        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in params.values()
-    )
-    if accepts_var_kwargs:
-        return grpo_config_cls(**kwargs)
+_GRPO_CONFIG_ALIAS_GROUPS: tuple[tuple[str, str], ...] = (
+    ("max_prompt_length", "max_prompt_len"),
+    ("max_completion_length", "max_completion_len"),
+)
 
-    supported = {name for name in params.keys() if name != "self"}
-    adapted = dict(kwargs)
 
-    # TRL changed some GRPOConfig names across releases.
-    aliases: dict[str, tuple[str, ...]] = {
-        "max_prompt_length": ("max_prompt_len",),
-        "max_completion_length": ("max_completion_len",),
-    }
-    for source_name, target_names in aliases.items():
-        if source_name not in adapted or source_name in supported:
+def _normalized_grpo_config_kwargs(
+    kwargs: dict[str, Any],
+    *,
+    supported: set[str] | None,
+    filter_unsupported: bool,
+    prefer_legacy_aliases: bool | None,
+) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    consumed: set[str] = set()
+
+    for modern_name, legacy_name in _GRPO_CONFIG_ALIAS_GROUPS:
+        alias_names = (modern_name, legacy_name)
+        present_names = [name for name in alias_names if name in kwargs]
+        if not present_names:
             continue
-        for target_name in target_names:
-            if target_name in supported and target_name not in adapted:
-                adapted[target_name] = adapted[source_name]
-                break
 
-    filtered = {key: value for key, value in adapted.items() if key in supported}
-    return grpo_config_cls(**filtered)
+        alias_values = {name: kwargs[name] for name in present_names}
+        first_value = alias_values[present_names[0]]
+        if any(value != first_value for value in alias_values.values()):
+            raise GRPOTrainingError(
+                f"Conflicting GRPO config values for aliases {modern_name!r} and {legacy_name!r}"
+            )
+
+        consumed.update(alias_names)
+
+        if prefer_legacy_aliases is None:
+            preferred_order = tuple(name for name in alias_names if name in kwargs)
+            if supported is not None:
+                supported_names = tuple(name for name in alias_names if name in supported)
+                if supported_names:
+                    preferred_order = supported_names
+        elif prefer_legacy_aliases:
+            preferred_order = (legacy_name, modern_name)
+        else:
+            preferred_order = (modern_name, legacy_name)
+
+        target_name = next(iter(preferred_order), modern_name)
+        if filter_unsupported and supported is not None and target_name not in supported:
+            fallback_name = next((name for name in alias_names if name in supported), None)
+            if fallback_name is None:
+                continue
+            target_name = fallback_name
+
+        normalized[target_name] = first_value
+
+    for key, value in kwargs.items():
+        if key in consumed:
+            continue
+        if filter_unsupported and supported is not None and key not in supported:
+            continue
+        normalized[key] = value
+
+    if filter_unsupported and supported is not None:
+        normalized = {key: value for key, value in normalized.items() if key in supported}
+    return normalized
+
+
+def _grpo_config_candidates(
+    kwargs: dict[str, Any],
+    *,
+    supported: set[str] | None,
+    filter_unsupported: bool,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for prefer_legacy_aliases in (None, False, True):
+        candidate = _normalized_grpo_config_kwargs(
+            kwargs,
+            supported=supported,
+            filter_unsupported=filter_unsupported,
+            prefer_legacy_aliases=prefer_legacy_aliases,
+        )
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
+def _build_grpo_config(grpo_config_cls: Any, kwargs: dict[str, Any]) -> Any:
+    try:
+        params = inspect.signature(grpo_config_cls.__init__).parameters
+    except (TypeError, ValueError):
+        params = None
+
+    if params is None:
+        supported = None
+        filter_unsupported = False
+    else:
+        accepts_var_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in params.values()
+        )
+        supported = {
+            name
+            for name, parameter in params.items()
+            if name != "self" and parameter.kind != inspect.Parameter.VAR_KEYWORD
+        }
+        filter_unsupported = not accepts_var_kwargs
+
+    last_unexpected_kw_error: TypeError | None = None
+    for candidate in _grpo_config_candidates(
+        kwargs,
+        supported=supported,
+        filter_unsupported=filter_unsupported,
+    ):
+        try:
+            return grpo_config_cls(**candidate)
+        except TypeError as exc:
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            last_unexpected_kw_error = exc
+
+    if last_unexpected_kw_error is not None:
+        raise last_unexpected_kw_error
+    return grpo_config_cls(**kwargs)
 
 
 def _run_trl_training(

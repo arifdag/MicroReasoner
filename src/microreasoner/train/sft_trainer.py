@@ -231,23 +231,58 @@ def _build_torch_datasets(
     max_seq_len: int,
     torch_module: Any,
 ) -> Any:
+    def _build_supervised_example(row: SFTRecordItem) -> dict[str, list[int]]:
+        prompt_prefix = f"{row.prompt}\n"
+        text = f"{prompt_prefix}{row.target_response}"
+        encoded = tokenizer(
+            text,
+            truncation=True,
+            max_length=max_seq_len,
+            padding=False,
+            return_offsets_mapping=True,
+        )
+        input_ids = [int(item) for item in encoded["input_ids"]]
+        attention_mask = [int(item) for item in encoded["attention_mask"]]
+        raw_offsets = encoded.get("offset_mapping")
+        if raw_offsets is None:
+            raise SFTTrainingError("Tokenizer must provide offset_mapping for SFT target masking")
+
+        labels: list[int] = []
+        target_char_start = len(prompt_prefix)
+        for token_id, offset in zip(input_ids, raw_offsets):
+            if not isinstance(offset, (list, tuple)) or len(offset) != 2:
+                raise SFTTrainingError("Tokenizer returned invalid offset_mapping entries")
+            start = int(offset[0])
+            end = int(offset[1])
+            if end <= target_char_start:
+                labels.append(-100)
+            else:
+                labels.append(token_id)
+
+        if not any(label != -100 for label in labels):
+            raise SFTTrainingError(
+                "SFT example "
+                f"{row.record_id!r} has no supervised target tokens after tokenization/truncation; "
+                "increase train_sft.batch.max_seq_len"
+            )
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
+
     class PromptTargetDataset(torch_module.utils.data.Dataset):
         def __init__(self, items: list[SFTRecordItem]) -> None:
             self._rows: list[dict[str, Any]] = []
             for row in items:
-                text = f"{row.prompt}\n{row.target_response}"
-                encoded = tokenizer(
-                    text,
-                    truncation=True,
-                    max_length=max_seq_len,
-                    padding=False,
-                )
+                encoded = _build_supervised_example(row)
                 input_ids = torch_module.tensor(encoded["input_ids"], dtype=torch_module.long)
                 attention_mask = torch_module.tensor(
                     encoded["attention_mask"],
                     dtype=torch_module.long,
                 )
-                labels = input_ids.clone()
+                labels = torch_module.tensor(encoded["labels"], dtype=torch_module.long)
                 self._rows.append(
                     {
                         "input_ids": input_ids,
