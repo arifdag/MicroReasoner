@@ -22,6 +22,11 @@ def test_colab_train_notebook_requires_pinned_ref_and_versions() -> None:
     assert '"transformers==4.46.0"' in full_text
     assert '"trl==0.9.6"' in full_text
     assert '"datasets==2.20.0"' in full_text
+    assert '"numpy==1.26.4"' in full_text
+    assert '"pandas==2.2.2"' in full_text
+    assert '"pyarrow==16.1.0"' in full_text
+    assert 'runtime.restart_runtime()' in full_text
+    assert 'Environment updated; restarting runtime once to finalize native dependencies.' in full_text
 
 
 def test_colab_train_notebook_does_not_relax_full_run_quality_gates() -> None:
