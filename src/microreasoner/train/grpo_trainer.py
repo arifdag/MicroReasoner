@@ -6,6 +6,7 @@ import math
 import random
 import time
 from dataclasses import dataclass
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -25,6 +26,24 @@ from microreasoner.train.grpo_data import GRPOTrainInput, RLRecordItem
 
 class GRPOTrainingError(RuntimeError):
     """Raised when GRPO training setup/execution fails."""
+
+
+def _installed_version(distribution_name: str) -> str:
+    try:
+        return importlib_metadata.version(distribution_name)
+    except importlib_metadata.PackageNotFoundError:
+        return "not-installed"
+
+
+def _grpo_stack_error_message(exc: ImportError) -> str:
+    return (
+        "TRL backend requires a GRPO-capable TRL stack. "
+        f"Import failed: {exc}. "
+        f"Installed versions: datasets={_installed_version('datasets')}, "
+        f"transformers={_installed_version('transformers')}, "
+        f"trl={_installed_version('trl')}. "
+        "For Colab, use trl>=0.14.0 so GRPOConfig/GRPOTrainer are available."
+    )
 
 
 @dataclass(frozen=True)
@@ -850,9 +869,7 @@ def _run_trl_training(
         from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
         from trl import GRPOConfig, GRPOTrainer  # type: ignore
     except ImportError as exc:
-        raise GRPOTrainingError(
-            "TRL backend requires datasets, transformers, and trl packages"
-        ) from exc
+        raise GRPOTrainingError(_grpo_stack_error_message(exc)) from exc
 
     scorer = CorrectnessScorer("math_verify")
     length_band = LengthBand(

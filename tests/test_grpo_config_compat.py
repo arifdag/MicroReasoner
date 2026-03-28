@@ -152,3 +152,24 @@ def test_build_grpo_config_rejects_conflicting_alias_values() -> None:
                 "max_prompt_len": 512,
             },
         )
+
+
+def test_grpo_stack_error_message_includes_versions(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fake_version(name: str) -> str:
+        return {
+            "datasets": "2.20.0",
+            "transformers": "4.46.0",
+            "trl": "0.9.6",
+        }[name]
+
+    monkeypatch.setattr(grpo_trainer.importlib_metadata, "version", _fake_version)
+
+    message = grpo_trainer._grpo_stack_error_message(
+        ImportError("cannot import name 'GRPOTrainer' from 'trl'")
+    )
+
+    assert "cannot import name 'GRPOTrainer' from 'trl'" in message
+    assert "datasets=2.20.0" in message
+    assert "transformers=4.46.0" in message
+    assert "trl=0.9.6" in message
+    assert "trl>=0.14.0" in message

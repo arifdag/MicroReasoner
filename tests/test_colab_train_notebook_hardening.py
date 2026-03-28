@@ -20,7 +20,7 @@ def test_colab_train_notebook_requires_pinned_ref_and_versions() -> None:
     assert 'MICROREASONER_REF' in full_text
     assert 'Set MICROREASONER_REF to an exact git commit before running paid training.' in full_text
     assert '"transformers==4.46.0"' in full_text
-    assert '"trl==0.9.6"' in full_text
+    assert '"trl==0.14.0"' in full_text
     assert '"datasets==2.20.0"' in full_text
     assert '"numpy==1.26.4"' in full_text
     assert '"pandas==2.2.2"' in full_text
@@ -30,6 +30,9 @@ def test_colab_train_notebook_requires_pinned_ref_and_versions() -> None:
     assert 'pip", "uninstall", "-y", "bitsandbytes"' in full_text
     assert 'raise SystemExit(' in full_text
     assert 'Restart the Colab runtime once, then rerun the notebook from the top.' in full_text
+    assert "from trl import GRPOConfig, GRPOTrainer" in full_text
+    assert 'artifacts/runs/colab-sft/metrics.json' in full_text
+    assert 'artifacts/runs/colab-grpo/metrics.json' in full_text
     assert '!subprocess.check_call(cmd)' not in full_text
     assert '!run([sys.executable' not in full_text
 
