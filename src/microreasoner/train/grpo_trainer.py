@@ -19,6 +19,7 @@ from microreasoner.rewards.length import LengthBand, score_length
 from microreasoner.rewards.scalarize import RewardComponents, scalarize_reward
 from microreasoner.rewards.schema import score_schema
 from microreasoner.runtime.models import ResolvedConfig
+from microreasoner.train.hf_compat import prepare_trainer_optimizer_compat
 from microreasoner.train.grpo_data import GRPOTrainInput, RLRecordItem
 
 
@@ -1000,6 +1001,7 @@ def _run_trl_training(
             eval_dataset=eval_dataset,
             tokenizer=tokenizer,
         )
+    prepare_trainer_optimizer_compat(trainer)
 
     resume_arg = str(resume_from) if (resume_from is not None and resume_from.exists()) else None
     try:

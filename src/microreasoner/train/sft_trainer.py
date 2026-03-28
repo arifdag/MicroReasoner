@@ -9,6 +9,7 @@ from typing import Any
 
 from microreasoner.prompting import tokenize_generation_prompt, tokenize_supervised_text
 from microreasoner.runtime.models import ResolvedConfig
+from microreasoner.train.hf_compat import prepare_trainer_optimizer_compat
 from microreasoner.train.sft_data import SFTRecordItem, SFTTrainInput
 from microreasoner.train.sft_eval import SFTMetrics, evaluate_fixture, evaluate_transformers
 from microreasoner.train.sft_model import (
@@ -415,6 +416,7 @@ def _run_transformers_training(
             trainer = Trainer(**trainer_kwargs, processing_class=model_bundle.tokenizer)
         except TypeError:
             trainer = Trainer(**trainer_kwargs)
+    prepare_trainer_optimizer_compat(trainer)
 
     resume_arg: str | None = None
     if resume_from is not None and resume_from.exists():
