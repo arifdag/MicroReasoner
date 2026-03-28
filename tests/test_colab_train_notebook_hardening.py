@@ -25,8 +25,10 @@ def test_colab_train_notebook_requires_pinned_ref_and_versions() -> None:
     assert '"numpy==1.26.4"' in full_text
     assert '"pandas==2.2.2"' in full_text
     assert '"pyarrow==16.1.0"' in full_text
-    assert 'runtime.restart_runtime()' in full_text
-    assert 'Environment updated; restarting runtime once to finalize native dependencies.' in full_text
+    assert 'raise SystemExit(' in full_text
+    assert 'Restart the Colab runtime once, then rerun the notebook from the top.' in full_text
+    assert '!subprocess.check_call(cmd)' not in full_text
+    assert '!run([sys.executable' not in full_text
 
 
 def test_colab_train_notebook_does_not_relax_full_run_quality_gates() -> None:
