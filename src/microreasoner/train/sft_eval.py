@@ -130,6 +130,7 @@ def evaluate_transformers(
                 max_new_tokens=max_new_tokens,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
+                remove_invalid_values=True,
             )
         greedy_text = tokenizer.decode(greedy_ids[0][prompt_len:], skip_special_tokens=True)
         parsed = parse_response(greedy_text, strict_boxed_only=True)
@@ -160,6 +161,7 @@ def evaluate_transformers(
                     max_new_tokens=max_new_tokens,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
+                    remove_invalid_values=True,
                 )
             if sample_ids.dim() == 1:
                 sample_ids = sample_ids.unsqueeze(0)

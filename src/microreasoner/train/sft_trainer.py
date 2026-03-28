@@ -14,6 +14,7 @@ from microreasoner.train.sft_data import SFTRecordItem, SFTTrainInput
 from microreasoner.train.sft_eval import SFTMetrics, evaluate_fixture, evaluate_transformers
 from microreasoner.train.sft_model import (
     SFTModelSetupError,
+    _cuda_bf16_supported,
     build_transformers_model,
     resolve_sft_backend,
     select_sft_mode,
@@ -377,6 +378,7 @@ def _run_transformers_training(
         torch_module=torch,
     )
     collator = _build_collator(torch, model_bundle.tokenizer.pad_token_id)
+    bf16_enabled = _cuda_bf16_supported(torch)
 
     training_arg_kwargs: dict[str, Any] = {
         "output_dir": str(checkpoints_root),
@@ -397,8 +399,9 @@ def _run_transformers_training(
         "remove_unused_columns": False,
         "dataloader_pin_memory": False,
         "gradient_checkpointing": True,
-        "bf16": torch.cuda.is_available(),
-        "fp16": False,
+        "bf16": bf16_enabled,
+        "fp16": bool(torch.cuda.is_available() and not bf16_enabled),
+        "max_grad_norm": 1.0,
     }
     training_args = _build_training_arguments(TrainingArguments, training_arg_kwargs)
 

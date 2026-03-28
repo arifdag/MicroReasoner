@@ -19,6 +19,28 @@ class SFTModeSelection:
     reason: str
 
 
+def _cuda_bf16_supported(torch_module: Any) -> bool:
+    cuda = getattr(torch_module, "cuda", None)
+    if cuda is None or not cuda.is_available():
+        return False
+    checker = getattr(cuda, "is_bf16_supported", None)
+    if checker is None:
+        return False
+    try:
+        return bool(checker())
+    except TypeError:
+        return False
+
+
+def _select_training_dtype(torch_module: Any) -> Any:
+    cuda = getattr(torch_module, "cuda", None)
+    if cuda is None or not cuda.is_available():
+        return torch_module.float32
+    if _cuda_bf16_supported(torch_module):
+        return torch_module.bfloat16
+    return torch_module.float16
+
+
 def _cuda_total_vram_gb() -> float | None:
     try:
         import torch  # type: ignore
@@ -128,7 +150,7 @@ def build_transformers_model(
         tokenizer.pad_token = tokenizer.eos_token
 
     device_map = "auto"
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    torch_dtype = _select_training_dtype(torch)
 
     if selected_mode == "qlora":
         BitsAndBytesConfig = stack["BitsAndBytesConfig"]
@@ -179,6 +201,9 @@ def build_transformers_model(
         model.enable_input_require_grads()
     if hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
+    config_obj = getattr(model, "config", None)
+    if config_obj is not None and hasattr(config_obj, "use_cache"):
+        config_obj.use_cache = False
 
     return HFModelBundle(model=model, tokenizer=tokenizer, stack=stack)
 
