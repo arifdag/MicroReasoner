@@ -166,6 +166,8 @@ def test_build_rl_dataset_outputs_prompt_records(tmp_path: Path) -> None:
     assert "gold_answer" in sample
     assert "curriculum_stage" in sample
     assert "difficulty_tag" in sample
+    assert "Respond using the exact format" in sample["prompt"]
+    assert "<answer>\\boxed{...}</answer>" in sample["prompt"]
 
 
 def test_data_cli_build_and_inspect(tmp_path: Path, monkeypatch) -> None:

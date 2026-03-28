@@ -7,6 +7,7 @@ from microreasoner.eval.types import ParseResult
 
 THINK_PATTERN = re.compile(r"(?s)<think>(.*?)</think>")
 ANSWER_PATTERN = re.compile(r"(?s)<answer>(.*?)</answer>")
+FULL_RESPONSE_PATTERN = re.compile(r"(?s)^\s*<think>(.*?)</think>\s*<answer>(.*?)</answer>\s*$")
 
 
 def _extract_single_tag(text: str, pattern: re.Pattern[str], missing_reason: str, multi_reason: str) -> tuple[str | None, str | None]:
@@ -70,6 +71,16 @@ def parse_response(text: str, strict_boxed_only: bool = True) -> ParseResult:
             parse_ok=False,
             schema_ok=False,
             reason=answer_error,
+        )
+
+    if FULL_RESPONSE_PATTERN.fullmatch(text) is None:
+        return ParseResult(
+            think_text=think_text,
+            answer_text=answer_text,
+            boxed_answer=None,
+            parse_ok=False,
+            schema_ok=False,
+            reason="extra_text_outside_tags",
         )
 
     assert answer_text is not None  # for type checkers

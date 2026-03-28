@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from microreasoner.prompting import render_generation_prompt, render_supervised_text
+from microreasoner.prompting import tokenize_generation_prompt, tokenize_supervised_text
 from microreasoner.runtime.models import ResolvedConfig
 from microreasoner.train.sft_data import SFTRecordItem, SFTTrainInput
 from microreasoner.train.sft_eval import SFTMetrics, evaluate_fixture, evaluate_transformers
@@ -233,17 +233,17 @@ def _build_torch_datasets(
     torch_module: Any,
 ) -> Any:
     def _build_supervised_example(row: SFTRecordItem) -> dict[str, list[int]]:
-        prompt_text = render_generation_prompt(tokenizer, row.prompt)
-        full_text = render_supervised_text(tokenizer, row.prompt, row.target_response)
-
-        prompt_encoded = tokenizer(
-            prompt_text,
+        prompt_encoded = tokenize_generation_prompt(
+            tokenizer,
+            row.prompt,
             truncation=True,
             max_length=max_seq_len,
             padding=False,
         )
-        encoded = tokenizer(
-            full_text,
+        encoded = tokenize_supervised_text(
+            tokenizer,
+            row.prompt,
+            row.target_response,
             truncation=True,
             max_length=max_seq_len,
             padding=False,

@@ -10,8 +10,10 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from microreasoner.eval.inference import InferenceError, InferenceSettings, build_inference_engine
 from microreasoner.eval.metrics import build_metrics
-from microreasoner.eval.types import EvalPrediction
+from microreasoner.eval.types import EvalExample, EvalPrediction
+from microreasoner.prompting import build_reasoning_messages
 from microreasoner.rewards.correctness import CorrectnessScorer
 from microreasoner.rewards.length import LengthBand, score_length
 from microreasoner.rewards.scalarize import RewardComponents, scalarize_reward
@@ -250,6 +252,32 @@ def _std(values: list[float]) -> float:
     return float(math.sqrt(variance))
 
 
+def _count_tokens(text: str | None) -> int:
+    if text is None or text.strip() == "":
+        return 0
+    return len(text.split())
+
+
+def _pass_at_1(predictions: list[EvalPrediction], mode: str) -> float:
+    grouped: dict[str, list[EvalPrediction]] = {}
+    for prediction in predictions:
+        if prediction.mode != mode:
+            continue
+        grouped.setdefault(prediction.example_id, []).append(prediction)
+    if not grouped:
+        return 0.0
+
+    correct = 0
+    for rows in grouped.values():
+        if mode == "greedy":
+            if rows[0].verified_correct:
+                correct += 1
+            continue
+        if any(item.verified_correct for item in rows):
+            correct += 1
+    return correct / len(grouped)
+
+
 def _stage_for_step(config: ResolvedConfig, step: int) -> str:
     for stage in config.train_grpo.curriculum.stage_schedule:
         if stage.step_start <= step <= stage.step_end:
@@ -272,16 +300,8 @@ def _build_eval_snapshot(
     predictions: list[EvalPrediction],
 ) -> GRPOEvalSnapshot:
     metrics = build_metrics(predictions)
-    accuracy = metrics.get("accuracy", {})
-    if len(accuracy) == 0:
-        greedy_pass_at_1 = 0.0
-        sampled_pass_at_1 = 0.0
-        benchmark_name = "rl_val"
-    else:
-        benchmark_name = sorted(accuracy.keys())[0]
-        benchmark = accuracy.get(benchmark_name, {})
-        greedy_pass_at_1 = float(benchmark.get("greedy_pass_at_1", 0.0))
-        sampled_pass_at_1 = float(benchmark.get("sampled_pass_at_1", 0.0))
+    greedy_pass_at_1 = _pass_at_1(predictions, "greedy")
+    sampled_pass_at_1 = _pass_at_1(predictions, "sampled")
 
     schema = metrics.get("schema", {})
     parser = metrics.get("parser", {})
@@ -355,6 +375,89 @@ def _evaluate_fixture(
                     verified_correct=sampled_correct,
                     parse_reason=sampled_schema.parse.reason,
                     think_token_count=len((sampled_schema.parse.think_text or "").split()),
+                )
+            )
+    return predictions
+
+
+def _evaluate_transformers_checkpoint(
+    *,
+    checkpoint: Path,
+    config: ResolvedConfig,
+    records: list[RLRecordItem],
+    scorer: CorrectnessScorer,
+    seed: int,
+) -> list[EvalPrediction]:
+    sampled_n = min(max(1, config.evaluation.sampled.num_samples), 4)
+    settings = InferenceSettings(
+        backend="transformers",
+        max_new_tokens=config.evaluation.inference.max_new_tokens,
+        device=config.evaluation.inference.device,
+        dtype=config.evaluation.inference.dtype,
+        greedy_temperature=config.evaluation.greedy.temperature,
+        sampled_temperature=config.evaluation.sampled.temperature,
+        sampled_top_p=config.evaluation.sampled.top_p,
+        sampled_n=sampled_n,
+        seed=seed,
+    )
+    try:
+        engine = build_inference_engine(checkpoint=checkpoint, settings=settings)
+    except InferenceError as exc:
+        raise GRPOTrainingError(
+            f"Failed to build inference engine for GRPO checkpoint eval: {exc}"
+        ) from exc
+
+    strict_boxed_only = config.evaluation.parser.strict_boxed_only
+    predictions: list[EvalPrediction] = []
+    for record in records:
+        example = EvalExample(
+            example_id=record.record_id,
+            benchmark=record.benchmark,  # type: ignore[arg-type]
+            question=record.prompt,
+            gold_answer=record.gold_answer,
+        )
+
+        greedy_text = engine.generate_greedy(record.prompt, example)
+        greedy_schema = score_schema(greedy_text, strict_boxed_only=strict_boxed_only)
+        greedy_correct = scorer.score(greedy_schema.parse.boxed_answer, record.gold_answer).correct
+        predictions.append(
+            EvalPrediction(
+                example_id=record.record_id,
+                benchmark=record.benchmark,  # type: ignore[arg-type]
+                mode="greedy",
+                sample_index=0,
+                prompt=record.prompt,
+                raw_text=greedy_text,
+                parsed_answer=greedy_schema.parse.boxed_answer,
+                parse_ok=greedy_schema.parse.parse_ok,
+                schema_ok=greedy_schema.parse.schema_ok,
+                verified_correct=greedy_correct,
+                parse_reason=greedy_schema.parse.reason,
+                think_token_count=_count_tokens(greedy_schema.parse.think_text),
+            )
+        )
+
+        sampled_texts = engine.generate_sampled(record.prompt, example)
+        for sample_index, sampled_text in enumerate(sampled_texts):
+            sampled_schema = score_schema(sampled_text, strict_boxed_only=strict_boxed_only)
+            sampled_correct = scorer.score(
+                sampled_schema.parse.boxed_answer,
+                record.gold_answer,
+            ).correct
+            predictions.append(
+                EvalPrediction(
+                    example_id=record.record_id,
+                    benchmark=record.benchmark,  # type: ignore[arg-type]
+                    mode="sampled",
+                    sample_index=sample_index,
+                    prompt=record.prompt,
+                    raw_text=sampled_text,
+                    parsed_answer=sampled_schema.parse.boxed_answer,
+                    parse_ok=sampled_schema.parse.parse_ok,
+                    schema_ok=sampled_schema.parse.schema_ok,
+                    verified_correct=sampled_correct,
+                    parse_reason=sampled_schema.parse.reason,
+                    think_token_count=_count_tokens(sampled_schema.parse.think_text),
                 )
             )
     return predictions
@@ -761,7 +864,7 @@ def _run_trl_training(
 
     train_rows = [
         {
-            "prompt": item.prompt,
+            "prompt": build_reasoning_messages(item.prompt),
             "gold_answer": item.gold_answer,
             "curriculum_stage": item.curriculum_stage,
             "benchmark": item.benchmark,
@@ -770,7 +873,7 @@ def _run_trl_training(
     ]
     eval_rows = [
         {
-            "prompt": item.prompt,
+            "prompt": build_reasoning_messages(item.prompt),
             "gold_answer": item.gold_answer,
             "curriculum_stage": item.curriculum_stage,
             "benchmark": item.benchmark,
@@ -915,11 +1018,12 @@ def _run_trl_training(
         init_checkpoint=init_checkpoint,
     )
 
-    predictions = _evaluate_fixture(
+    predictions = _evaluate_transformers_checkpoint(
+        checkpoint=latest_checkpoint,
+        config=config,
         records=list(train_input.val_records),
-        strict_boxed_only=config.evaluation.parser.strict_boxed_only,
         scorer=scorer,
-        sampled_n=min(max(1, config.evaluation.sampled.num_samples), 4),
+        seed=int(config.raw.get("seed", 42)),
     )
     snapshot = _build_eval_snapshot(
         latest_checkpoint,

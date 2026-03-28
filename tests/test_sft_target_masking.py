@@ -15,8 +15,9 @@ class _FakeTokenizer:
         truncation: bool,
         max_length: int,
         padding: bool,
+        add_special_tokens: bool = True,
     ) -> dict[str, list[int]]:
-        del truncation, padding
+        del truncation, padding, add_special_tokens
         truncated = text[:max_length]
         payload: dict[str, list[int]] = {
             "input_ids": [idx + 1 for idx, _ in enumerate(truncated)],

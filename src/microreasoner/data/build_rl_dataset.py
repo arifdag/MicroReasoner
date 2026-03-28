@@ -16,6 +16,7 @@ from microreasoner.data.manifest import (
 from microreasoner.data.normalize import normalize_examples
 from microreasoner.data.split import split_examples
 from microreasoner.data.types import BuildResult, CanonicalExample, RLPromptRecord
+from microreasoner.prompting import build_reasoning_prompt
 from microreasoner.runtime.context import repo_root, utc_now_iso
 from microreasoner.runtime.models import ResolvedConfig
 
@@ -57,14 +58,9 @@ def _curriculum_stage(example: CanonicalExample, config: ResolvedConfig) -> str:
 
 def _to_rl_record(example: CanonicalExample, split_name: str, config: ResolvedConfig) -> RLPromptRecord:
     answer = example.answer_boxed or ""
-    prompt = (
-        "Solve the following problem.\n"
-        "You may reason internally and return only the final formatted answer.\n\n"
-        f"Problem:\n{example.question}"
-    )
     return RLPromptRecord(
         record_id=example.example_id,
-        prompt=prompt,
+        prompt=build_reasoning_prompt(example.question),
         gold_answer=answer,
         split=split_name,
         source_name=example.source_name,
