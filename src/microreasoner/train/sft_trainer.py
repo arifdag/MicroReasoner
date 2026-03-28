@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from microreasoner.prompting import render_generation_prompt, render_supervised_text
 from microreasoner.runtime.models import ResolvedConfig
 from microreasoner.train.sft_data import SFTRecordItem, SFTTrainInput
 from microreasoner.train.sft_eval import SFTMetrics, evaluate_fixture, evaluate_transformers
@@ -232,34 +233,34 @@ def _build_torch_datasets(
     torch_module: Any,
 ) -> Any:
     def _build_supervised_example(row: SFTRecordItem) -> dict[str, list[int]]:
-        prompt_prefix = f"{row.prompt}\n"
-        text = f"{prompt_prefix}{row.target_response}"
-        encoded = tokenizer(
-            text,
+        prompt_text = render_generation_prompt(tokenizer, row.prompt)
+        full_text = render_supervised_text(tokenizer, row.prompt, row.target_response)
+
+        prompt_encoded = tokenizer(
+            prompt_text,
             truncation=True,
             max_length=max_seq_len,
             padding=False,
-            return_offsets_mapping=True,
         )
+        encoded = tokenizer(
+            full_text,
+            truncation=True,
+            max_length=max_seq_len,
+            padding=False,
+        )
+        prompt_ids = [int(item) for item in prompt_encoded["input_ids"]]
         input_ids = [int(item) for item in encoded["input_ids"]]
         attention_mask = [int(item) for item in encoded["attention_mask"]]
-        raw_offsets = encoded.get("offset_mapping")
-        if raw_offsets is None:
-            raise SFTTrainingError("Tokenizer must provide offset_mapping for SFT target masking")
 
-        labels: list[int] = []
-        target_char_start = len(prompt_prefix)
-        for token_id, offset in zip(input_ids, raw_offsets):
-            if not isinstance(offset, (list, tuple)) or len(offset) != 2:
-                raise SFTTrainingError("Tokenizer returned invalid offset_mapping entries")
-            start = int(offset[0])
-            end = int(offset[1])
-            if end <= target_char_start:
-                labels.append(-100)
-            else:
-                labels.append(token_id)
+        prompt_token_count = 0
+        for prompt_token, full_token in zip(prompt_ids, input_ids):
+            if prompt_token != full_token:
+                break
+            prompt_token_count += 1
 
-        if not any(label != -100 for label in labels):
+        labels = ([-100] * prompt_token_count) + input_ids[prompt_token_count:]
+
+        if prompt_token_count >= len(input_ids):
             raise SFTTrainingError(
                 "SFT example "
                 f"{row.record_id!r} has no supervised target tokens after tokenization/truncation; "

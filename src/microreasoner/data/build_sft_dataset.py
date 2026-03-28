@@ -16,6 +16,7 @@ from microreasoner.data.manifest import (
 from microreasoner.data.normalize import normalize_examples
 from microreasoner.data.split import split_examples
 from microreasoner.data.types import BuildResult, CanonicalExample, SFTRecord
+from microreasoner.prompting import build_reasoning_prompt
 from microreasoner.runtime.context import repo_root, utc_now_iso
 from microreasoner.runtime.models import ResolvedConfig
 
@@ -36,12 +37,7 @@ def _resolve_source_paths(
 
 
 def _make_sft_prompt(example: CanonicalExample) -> str:
-    return (
-        "Solve the following problem.\n"
-        "Respond using the exact format:\n"
-        "<think>...</think>\n<answer>\\boxed{...}</answer>\n\n"
-        f"Problem:\n{example.question}"
-    )
+    return build_reasoning_prompt(example.question)
 
 
 def _to_sft_record(example: CanonicalExample, split_name: str) -> SFTRecord:

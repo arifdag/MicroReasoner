@@ -12,6 +12,7 @@ from microreasoner.data.manifest import (
     write_json,
     write_jsonl,
 )
+from microreasoner.prompting import build_reasoning_prompt
 from microreasoner.rewards.correctness import CorrectnessScorer
 from microreasoner.rewards.schema import score_schema
 from microreasoner.runtime.context import repo_root, utc_now_iso
@@ -97,12 +98,7 @@ def build_rejection_sampling_source(
 
 
 def _make_sft_prompt(question: str) -> str:
-    return (
-        "Solve the following problem.\n"
-        "Respond using the exact format:\n"
-        "<think>...</think>\n<answer>\\boxed{...}</answer>\n\n"
-        f"Problem:\n{question}"
-    )
+    return build_reasoning_prompt(question)
 
 
 def build_rs_sft_manifest(

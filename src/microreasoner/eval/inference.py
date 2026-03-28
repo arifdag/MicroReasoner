@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from microreasoner.prompting import render_generation_prompt
 from microreasoner.eval.types import EvalExample
 
 
@@ -120,7 +121,8 @@ class TransformersInferenceEngine(InferenceEngine):
         tokenizer = self._tokenizer
         model = self._model
 
-        inputs = tokenizer(prompt, return_tensors="pt")
+        rendered_prompt = render_generation_prompt(tokenizer, prompt)
+        inputs = tokenizer(rendered_prompt, return_tensors="pt")
         inputs = {key: value.to(self._device) for key, value in inputs.items()}
         prompt_len = int(inputs["input_ids"].shape[1])
 

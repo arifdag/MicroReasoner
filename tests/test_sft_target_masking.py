@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from microreasoner.prompting import render_generation_prompt
 from microreasoner.train.sft_data import SFTRecordItem
 from microreasoner.train.sft_trainer import SFTTrainingError, _build_torch_datasets
 
@@ -14,17 +15,31 @@ class _FakeTokenizer:
         truncation: bool,
         max_length: int,
         padding: bool,
-        return_offsets_mapping: bool,
-    ) -> dict[str, list[int] | list[tuple[int, int]]]:
+    ) -> dict[str, list[int]]:
         del truncation, padding
         truncated = text[:max_length]
-        payload: dict[str, list[int] | list[tuple[int, int]]] = {
+        payload: dict[str, list[int]] = {
             "input_ids": [idx + 1 for idx, _ in enumerate(truncated)],
             "attention_mask": [1] * len(truncated),
         }
-        if return_offsets_mapping:
-            payload["offset_mapping"] = [(idx, idx + 1) for idx, _ in enumerate(truncated)]
         return payload
+
+
+class _FakeChatTokenizer(_FakeTokenizer):
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tokenize: bool,
+        add_generation_prompt: bool,
+    ) -> str:
+        assert not tokenize
+        rendered = ""
+        for message in messages:
+            rendered += f"<|{message['role']}|>{message['content']}"
+        if add_generation_prompt:
+            rendered += "<|assistant|>"
+        return rendered
 
 
 class _FakeTorch:
@@ -59,8 +74,33 @@ def test_build_torch_datasets_masks_prompt_tokens_from_labels() -> None:
     )
     item = dataset[0]
 
-    assert item["labels"][:2] == [-100, -100]
-    assert item["labels"][2:] == item["input_ids"][2:]
+    masked_prefix = len(render_generation_prompt(_FakeTokenizer(), row.prompt))
+    assert item["labels"][:masked_prefix] == [-100] * masked_prefix
+    assert item["labels"][masked_prefix:] == item["input_ids"][masked_prefix:]
+
+
+def test_build_torch_datasets_masks_chat_template_prompt_tokens() -> None:
+    row = SFTRecordItem(
+        record_id="chat-demo",
+        prompt="Q",
+        target_response="<think>x</think>",
+        benchmark="gsm8k",
+        source_name="src",
+        gold_answer="x",
+    )
+
+    tokenizer = _FakeChatTokenizer()
+    dataset = _build_torch_datasets(
+        records=[row],
+        tokenizer=tokenizer,
+        max_seq_len=128,
+        torch_module=_FakeTorch(),
+    )
+    item = dataset[0]
+
+    masked_prefix = len(render_generation_prompt(tokenizer, row.prompt))
+    assert item["labels"][:masked_prefix] == [-100] * masked_prefix
+    assert item["labels"][masked_prefix:] == item["input_ids"][masked_prefix:]
 
 
 def test_build_torch_datasets_fails_when_target_is_fully_truncated() -> None:

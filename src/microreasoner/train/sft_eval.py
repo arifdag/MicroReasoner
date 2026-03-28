@@ -6,6 +6,7 @@ from typing import Any
 
 from microreasoner.eval.parser import parse_response
 from microreasoner.eval.verifier import build_verifier
+from microreasoner.prompting import render_generation_prompt
 from microreasoner.train.sft_data import SFTRecordItem
 
 
@@ -114,7 +115,8 @@ def evaluate_transformers(
     think_counts: list[int] = []
 
     for item in records:
-        inputs = tokenizer(item.prompt, return_tensors="pt")
+        prompt_text = render_generation_prompt(tokenizer, item.prompt)
+        inputs = tokenizer(prompt_text, return_tensors="pt")
         inputs = {key: value.to(model.device) for key, value in inputs.items()}
         prompt_len = int(inputs["input_ids"].shape[1])
 
