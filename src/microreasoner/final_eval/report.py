@@ -12,14 +12,27 @@ def write_final_metrics_json(payload: dict[str, Any], path: Path) -> None:
         handle.write("\n")
 
 
+def _coerce_model_entry(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _coerce_metrics_entry(model: dict[str, Any]) -> dict[str, Any]:
+    metrics = model.get("metrics")
+    if isinstance(metrics, dict):
+        return metrics
+    return {}
+
+
 def _table_for_models(models: dict[str, Any]) -> list[str]:
     lines = [
         "| model | status | macro_greedy | macro_sampled | schema | parser | wallclock_s |",
         "|---|---|---:|---:|---:|---:|---:|",
     ]
     for model_id in ("base", "sft", "grpo"):
-        model = models.get(model_id, {})
-        metrics = model.get("metrics", {})
+        model = _coerce_model_entry(models.get(model_id))
+        metrics = _coerce_metrics_entry(model)
         lines.append(
             "| "
             f"{model_id} | {model.get('status', 'missing')} | "
@@ -59,8 +72,8 @@ def _table_for_cost(models: dict[str, Any]) -> list[str]:
         "|---|---:|---:|---:|---:|",
     ]
     for model_id in ("base", "sft", "grpo"):
-        model = models.get(model_id, {})
-        metrics = model.get("metrics", {})
+        model = _coerce_model_entry(models.get(model_id))
+        metrics = _coerce_metrics_entry(model)
         cost_g = metrics.get("cost_per_solved_greedy")
         cost_s = metrics.get("cost_per_solved_sampled")
         cost_g_text = "n/a" if cost_g is None else f"{float(cost_g):.4f}"
