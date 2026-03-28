@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -70,32 +71,34 @@ def resolve_sft_backend(config: ResolvedConfig) -> str:
     return backend
 
 
-def require_transformers_stack() -> dict[str, Any]:
+def require_transformers_stack(*, selected_mode: str) -> dict[str, Any]:
     try:
-        import torch  # type: ignore
-        from peft import LoraConfig, get_peft_model  # type: ignore
-        from transformers import (  # type: ignore
-            AutoModelForCausalLM,
-            AutoTokenizer,
-            BitsAndBytesConfig,
-            Trainer,
-            TrainingArguments,
-        )
+        torch = importlib.import_module("torch")  # type: ignore
+        peft = importlib.import_module("peft")  # type: ignore
+        transformers = importlib.import_module("transformers")  # type: ignore
     except ImportError as exc:
         raise SFTModelSetupError(
-            "Transformers SFT backend requires torch, transformers, peft, and bitsandbytes"
+            "Transformers SFT backend requires torch, transformers, and peft"
         ) from exc
 
-    return {
+    stack = {
         "torch": torch,
-        "AutoModelForCausalLM": AutoModelForCausalLM,
-        "AutoTokenizer": AutoTokenizer,
-        "BitsAndBytesConfig": BitsAndBytesConfig,
-        "Trainer": Trainer,
-        "TrainingArguments": TrainingArguments,
-        "LoraConfig": LoraConfig,
-        "get_peft_model": get_peft_model,
+        "AutoModelForCausalLM": getattr(transformers, "AutoModelForCausalLM"),
+        "AutoTokenizer": getattr(transformers, "AutoTokenizer"),
+        "Trainer": getattr(transformers, "Trainer"),
+        "TrainingArguments": getattr(transformers, "TrainingArguments"),
+        "LoraConfig": getattr(peft, "LoraConfig"),
+        "get_peft_model": getattr(peft, "get_peft_model"),
     }
+    if selected_mode == "qlora":
+        try:
+            importlib.import_module("bitsandbytes")  # type: ignore
+        except ImportError as exc:
+            raise SFTModelSetupError(
+                "QLoRA SFT backend requires bitsandbytes in addition to torch, transformers, and peft"
+            ) from exc
+        stack["BitsAndBytesConfig"] = getattr(transformers, "BitsAndBytesConfig")
+    return stack
 
 
 @dataclass
@@ -111,12 +114,11 @@ def build_transformers_model(
     selected_mode: str,
     checkpoint_or_model: Path | str,
 ) -> HFModelBundle:
-    stack = require_transformers_stack()
+    stack = require_transformers_stack(selected_mode=selected_mode)
     torch = stack["torch"]
 
     AutoTokenizer = stack["AutoTokenizer"]
     AutoModelForCausalLM = stack["AutoModelForCausalLM"]
-    BitsAndBytesConfig = stack["BitsAndBytesConfig"]
     LoraConfig = stack["LoraConfig"]
     get_peft_model = stack["get_peft_model"]
 
@@ -129,6 +131,7 @@ def build_transformers_model(
     torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
     if selected_mode == "qlora":
+        BitsAndBytesConfig = stack["BitsAndBytesConfig"]
         quant_conf = config.train_sft.quantization
         if not quant_conf.enabled:
             raise SFTModelSetupError("QLoRA selected but quantization.enabled=false")
