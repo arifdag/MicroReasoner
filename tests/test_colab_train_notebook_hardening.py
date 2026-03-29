@@ -34,6 +34,10 @@ def test_colab_train_notebook_requires_pinned_ref_and_versions() -> None:
     assert "from trl import GRPOConfig, GRPOTrainer" in full_text
     assert 'artifacts/runs/colab-sft/metrics.json' in full_text
     assert 'artifacts/runs/colab-grpo/metrics.json' in full_text
+    assert 'if "TRAIN_BASE_MODEL" not in globals():' in full_text
+    assert 'if "SFT_BEST_CHECKPOINT" not in globals():' in full_text
+    assert 'if "RL_MANIFEST" not in globals():' in full_text
+    assert '/content/drive/MyDrive/artifacts/artifacts/runs/colab-sft/checkpoints.json' in full_text
     assert '!subprocess.check_call(cmd)' not in full_text
     assert '!run([sys.executable' not in full_text
 
