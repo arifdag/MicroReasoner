@@ -44,5 +44,7 @@ def test_colab_smoke_notebook_checks_final_eval_status_and_uses_parser_valid_fix
     )
     assert "\\\\n<answer>" not in full_text
     assert '"trl==0.14.0"' in full_text
+    assert '"datasets==2.21.0"' in full_text
+    assert '"accelerate==0.34.0"' in full_text
     assert 'final_metrics = read_json(REP / "final_metrics.json")' in full_text
     assert 'if final_metrics.get("status") != "success":' in full_text

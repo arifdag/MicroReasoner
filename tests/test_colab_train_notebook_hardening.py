@@ -21,7 +21,8 @@ def test_colab_train_notebook_requires_pinned_ref_and_versions() -> None:
     assert 'Set MICROREASONER_REF to an exact git commit before running paid training.' in full_text
     assert '"transformers==4.46.0"' in full_text
     assert '"trl==0.14.0"' in full_text
-    assert '"datasets==2.20.0"' in full_text
+    assert '"datasets==2.21.0"' in full_text
+    assert '"accelerate==0.34.0"' in full_text
     assert '"numpy==1.26.4"' in full_text
     assert '"pandas==2.2.2"' in full_text
     assert '"pyarrow==16.1.0"' in full_text
