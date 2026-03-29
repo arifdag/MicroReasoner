@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from microreasoner.hf_checkpoint import prepare_causal_lm_for_training
 from microreasoner.runtime.models import ResolvedConfig
 
 
@@ -197,13 +198,7 @@ def build_transformers_model(
     )
     model = get_peft_model(model, peft_config)
 
-    if hasattr(model, "enable_input_require_grads"):
-        model.enable_input_require_grads()
-    if hasattr(model, "gradient_checkpointing_enable"):
-        model.gradient_checkpointing_enable()
-    config_obj = getattr(model, "config", None)
-    if config_obj is not None and hasattr(config_obj, "use_cache"):
-        config_obj.use_cache = False
+    prepare_causal_lm_for_training(model)
 
     return HFModelBundle(model=model, tokenizer=tokenizer, stack=stack)
 

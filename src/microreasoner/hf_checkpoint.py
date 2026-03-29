@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +61,17 @@ def prepare_causal_lm_for_training(model: Any) -> Any:
     if hasattr(model, "enable_input_require_grads"):
         model.enable_input_require_grads()
     if hasattr(model, "gradient_checkpointing_enable"):
-        model.gradient_checkpointing_enable()
+        gradient_checkpointing_enable = model.gradient_checkpointing_enable
+        try:
+            signature = inspect.signature(gradient_checkpointing_enable)
+        except (TypeError, ValueError):
+            signature = None
+        if signature is not None and "gradient_checkpointing_kwargs" in signature.parameters:
+            gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": False}
+            )
+        else:
+            gradient_checkpointing_enable()
     config_obj = getattr(model, "config", None)
     if config_obj is not None and hasattr(config_obj, "use_cache"):
         config_obj.use_cache = False

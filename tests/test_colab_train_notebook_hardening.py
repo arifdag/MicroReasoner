@@ -55,3 +55,20 @@ def test_colab_train_notebook_does_not_relax_full_run_quality_gates() -> None:
     assert "train_grpo.gates.min_schema_compliance_rate=0.0" not in full_text
     assert "train_grpo.gates.max_parser_failure_rate=1.0" not in full_text
     assert "train_grpo.gates.min_reward_std=0.0" not in full_text
+
+
+def test_colab_train_notebook_uses_default_safe_grpo_shape() -> None:
+    notebook = _repo_root() / "notebooks" / "colab_train_microreasoner.ipynb"
+    payload = json.loads(notebook.read_text(encoding="utf-8"))
+
+    full_text = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in payload.get("cells", [])
+        if isinstance(cell, dict)
+    )
+    assert "GRPO_PER_DEVICE_BATCH = 1" in full_text
+    assert "GRPO_GRAD_ACCUM = 16" in full_text
+    assert "GRPO_GROUP_SIZE = 8" in full_text
+    assert "GRPO_MAX_PROMPT_LEN = 512" in full_text
+    assert "GRPO_MAX_COMPLETION_LEN = 256" in full_text
+    assert 'PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"' in full_text

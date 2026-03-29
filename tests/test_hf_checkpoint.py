@@ -128,3 +128,26 @@ def test_prepare_causal_lm_for_training_enables_train_flags() -> None:
     assert result is model
     assert calls == ["input_grads", "grad_ckpt"]
     assert model.config.use_cache is False
+
+
+def test_prepare_causal_lm_for_training_prefers_non_reentrant_checkpointing() -> None:
+    calls: list[object] = []
+
+    class Config:
+        use_cache = True
+
+    class FakeModel:
+        def __init__(self) -> None:
+            self.config = Config()
+
+        def enable_input_require_grads(self) -> None:
+            calls.append("input_grads")
+
+        def gradient_checkpointing_enable(self, *, gradient_checkpointing_kwargs: dict[str, object]) -> None:
+            calls.append(gradient_checkpointing_kwargs)
+
+    model = FakeModel()
+    prepare_causal_lm_for_training(model)
+
+    assert calls == ["input_grads", {"use_reentrant": False}]
+    assert model.config.use_cache is False
