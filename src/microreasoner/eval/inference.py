@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from microreasoner.prompting import tokenize_generation_prompt
 from microreasoner.eval.types import EvalExample
+from microreasoner.hf_checkpoint import load_causal_lm_checkpoint
+from microreasoner.prompting import tokenize_generation_prompt
 
 
 class InferenceError(RuntimeError):
@@ -85,7 +86,6 @@ class TransformersInferenceEngine(InferenceEngine):
     def __init__(self, checkpoint: Path, settings: InferenceSettings) -> None:
         try:
             import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError as exc:
             raise InferenceError(
                 "transformers backend requires 'torch' and 'transformers' packages"
@@ -107,14 +107,18 @@ class TransformersInferenceEngine(InferenceEngine):
                 raise InferenceError(f"Unsupported dtype setting: {settings.dtype}")
             dtype = dtype_map[settings.dtype]
 
-        self._tokenizer = AutoTokenizer.from_pretrained(str(checkpoint))
-        self._model = AutoModelForCausalLM.from_pretrained(str(checkpoint), torch_dtype=dtype)
+        try:
+            self._tokenizer, self._model = load_causal_lm_checkpoint(
+                checkpoint,
+                use_fast=True,
+                torch_dtype=dtype,
+                trainable_adapter=False,
+            )
+        except RuntimeError as exc:
+            raise InferenceError(f"Unable to load checkpoint for inference: {exc}") from exc
         self._model.to(device)
         self._model.eval()
         self._settings = settings
-
-        if self._tokenizer.pad_token_id is None and self._tokenizer.eos_token_id is not None:
-            self._tokenizer.pad_token = self._tokenizer.eos_token
 
     def _generate(self, prompt: str, *, do_sample: bool, temperature: float, top_p: float, n: int) -> list[str]:
         torch = self._torch

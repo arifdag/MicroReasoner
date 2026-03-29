@@ -14,6 +14,7 @@ from typing import Any
 from microreasoner.eval.inference import InferenceError, InferenceSettings, build_inference_engine
 from microreasoner.eval.metrics import build_metrics
 from microreasoner.eval.types import EvalExample, EvalPrediction
+from microreasoner.hf_checkpoint import load_causal_lm_checkpoint, prepare_causal_lm_for_training
 from microreasoner.prompting import build_reasoning_messages
 from microreasoner.rewards.correctness import CorrectnessScorer
 from microreasoner.rewards.length import LengthBand, score_length
@@ -866,7 +867,6 @@ def _run_trl_training(
 ) -> GRPOTrainingResult:
     try:
         from datasets import Dataset  # type: ignore
-        from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
         from trl import GRPOConfig, GRPOTrainer  # type: ignore
     except ImportError as exc:
         raise GRPOTrainingError(_grpo_stack_error_message(exc)) from exc
@@ -902,10 +902,15 @@ def _run_trl_training(
     train_dataset = Dataset.from_list(train_rows)
     eval_dataset = Dataset.from_list(eval_rows)
 
-    tokenizer = AutoTokenizer.from_pretrained(str(init_checkpoint), use_fast=True)
-    if tokenizer.pad_token is None and tokenizer.eos_token is not None:
-        tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(str(init_checkpoint))
+    try:
+        tokenizer, model = load_causal_lm_checkpoint(
+            init_checkpoint,
+            use_fast=True,
+            trainable_adapter=True,
+        )
+    except RuntimeError as exc:
+        raise GRPOTrainingError(f"Unable to load GRPO init checkpoint: {exc}") from exc
+    prepare_causal_lm_for_training(model)
 
     def reward_func(completions: list[Any], **kwargs: Any) -> list[float]:
         nonlocal reward_call_index
